@@ -1,0 +1,137 @@
+import pytest
+from fastapi.testclient import TestClient
+
+from webapp import app as app_module
+from webapp import runner, scheduler
+from webapp.db import AgentInput
+
+
+@pytest.fixture
+def client(tmp_db, monkeypatch):
+    for name in ("start", "shutdown", "sync_jobs"):
+        monkeypatch.setattr(scheduler, name, lambda: None)
+    with TestClient(app_module.app) as c:
+        yield c
+
+
+def form(**over):
+    base = {"name": "Space", "query": "launch news", "domain_mode": "include",
+            "domains": "spacenews.com", "lookback_days": "7", "max_searches": "5",
+            "schedule_time": ""}
+    base.update(over)
+    return base
+
+
+def make_agent(db, **over):
+    base = dict(name="A", query="q", domain_mode="none", domains=[],
+                lookback_days=7, max_searches=5, schedule_time=None)
+    base.update(over)
+    return db.create_agent(AgentInput(**base))
+
+
+def test_index_empty(client):
+    r = client.get("/")
+    assert r.status_code == 200 and "New agent" in r.text
+
+
+def test_create_agent_flow(client, tmp_db):
+    r = client.post("/agents", data=form(), follow_redirects=False)
+    assert r.status_code == 303
+    aid = int(r.headers["location"].rsplit("/", 1)[1])
+    assert tmp_db.get_agent(aid).domains == ["spacenews.com"]
+    page = client.get(f"/agents/{aid}")
+    assert page.status_code == 200 and "Space" in page.text and "No runs yet" in page.text
+    assert "Space" in client.get("/").text
+
+
+def test_create_agent_invalid_rerenders(client, tmp_db):
+    r = client.post("/agents", data=form(name="", domains="localhost"))
+    assert r.status_code == 422
+    assert "launch news" in r.text  # submitted values preserved
+    assert tmp_db.list_agents() == []
+
+
+def test_create_agent_missing_fields_is_form_error_not_json(client):
+    r = client.post("/agents", data={"name": "x"})
+    assert r.status_code == 422 and "text/html" in r.headers["content-type"]
+
+
+def test_edit_and_delete(client, tmp_db):
+    aid = make_agent(tmp_db)
+    assert client.get(f"/agents/{aid}/edit").status_code == 200
+    r = client.post(f"/agents/{aid}", data=form(name="Renamed"), follow_redirects=False)
+    assert r.status_code == 303 and tmp_db.get_agent(aid).name == "Renamed"
+    r = client.post(f"/agents/{aid}/delete", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/"
+    assert tmp_db.get_agent(aid) is None
+
+
+def test_run_now_redirect_and_htmx(client, tmp_db, monkeypatch):
+    aid = make_agent(tmp_db)
+    def fake_start(agent_id, kind):
+        rid, _ = tmp_db.create_run(agent_id, kind)
+        return rid
+    monkeypatch.setattr(runner, "start_run", fake_start)
+    r = client.post(f"/agents/{aid}/run", follow_redirects=False)
+    assert r.status_code == 303
+    r = client.post(f"/agents/{aid}/run", headers={"HX-Request": "true"})
+    assert r.status_code == 200
+    assert 'id="run-status"' in r.text and 'hx-trigger="every 2s"' in r.text
+
+
+def test_status_partial_finished_sets_refresh(client, tmp_db):
+    aid = make_agent(tmp_db)
+    rid, _ = tmp_db.create_run(aid, "manual")
+    r = client.get(f"/runs/{rid}/status")
+    assert "every 2s" in r.text and "HX-Refresh" not in r.headers
+    tmp_db.finish_run(rid, status="failed", error="RuntimeError: boom", input_tokens=0,
+                      output_tokens=0, searches=0, items=[])
+    r = client.get(f"/runs/{rid}/status")
+    assert r.headers.get("HX-Refresh") == "true" and "hx-get" not in r.text
+    assert "boom" in r.text
+
+
+def test_item_title_escaped(client, tmp_db):
+    from types import SimpleNamespace
+    aid = make_agent(tmp_db)
+    rid, _ = tmp_db.create_run(aid, "manual")
+    evil = SimpleNamespace(title="<script>alert(1)</script>", url="https://a.com/x",
+                           source="S", published="", summary="s")
+    tmp_db.finish_run(rid, status="succeeded", error=None, input_tokens=0, output_tokens=0,
+                      searches=1, items=[evil])
+    for path in (f"/agents/{aid}", f"/runs/{rid}"):
+        body = client.get(path).text
+        assert "<script>alert(1)</script>" not in body
+        assert "&lt;script&gt;" in body
+        assert "a.com" in body  # real hostname shown
+
+
+def test_seen_before_rendered_dimmed(client, tmp_db):
+    from types import SimpleNamespace
+    aid = make_agent(tmp_db)
+    it = SimpleNamespace(title="T", url="https://a.com/x", source="S", published="", summary="s")
+    for _ in range(2):
+        rid, _ = tmp_db.create_run(aid, "manual")
+        tmp_db.finish_run(rid, status="succeeded", error=None, input_tokens=0, output_tokens=0,
+                          searches=1, items=[it])
+    assert "seen before" in client.get(f"/agents/{aid}").text
+
+
+def test_empty_results_message(client, tmp_db):
+    aid = make_agent(tmp_db)
+    rid, _ = tmp_db.create_run(aid, "manual")
+    tmp_db.finish_run(rid, status="succeeded", error=None, input_tokens=0, output_tokens=0,
+                      searches=1, items=[])
+    assert "No matching news found" in client.get(f"/agents/{aid}").text
+
+
+@pytest.mark.parametrize("path", ["/agents/999", "/agents/999/edit", "/runs/999", "/runs/999/status"])
+def test_404s(client, path):
+    assert client.get(path).status_code == 404
+
+
+def test_run_missing_agent_404(client, monkeypatch):
+    def missing(agent_id, kind):
+        raise LookupError(agent_id)
+    monkeypatch.setattr(runner, "start_run", missing)
+    assert client.post("/agents/999/run").status_code == 404

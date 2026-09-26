@@ -1,0 +1,15 @@
+{% if run and run.status == "running" %}
+<div id="run-status" class="run-status" hx-get="/runs/{{ run.id }}/status" hx-trigger="every 2s" hx-swap="outerHTML">
+  <span class="badge running"><span class="dot"></span>Running…</span>
+  <span class="muted small">started {{ run.started_at|when }} · {{ run.trigger_kind }}</span>
+</div>
+{% elif run %}
+<div id="run-status" class="run-status">
+  <span class="badge {{ run.status }}">{{ run.status }}</span>
+  <span class="muted small">{{ run.trigger_kind }} run finished {{ run.finished_at|when }}
+    · {{ run.searches }} searches · {{ run.input_tokens }} in / {{ run.output_tokens }} out tokens</span>
+  {% if run.error %}<p class="error">{{ run.error }}</p>{% endif %}
+</div>
+{% else %}
+<div id="run-status" class="run-status"><span class="muted">No runs yet</span></div>
+{% endif %}

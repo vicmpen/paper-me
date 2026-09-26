@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}{% if agent %}Edit {{ agent.name }}{% else %}New agent{% endif %} · News agents{% endblock %}
+{% macro err(field) %}{% if errors[field] %}<span class="field-error">{{ errors[field] }}</span>{% endif %}{% endmacro %}
+{% block content %}
+<h1>{% if agent %}Edit agent{% else %}New agent{% endif %}</h1>
+{% if errors %}<p class="error">Please fix the highlighted fields.</p>{% endif %}
+<form class="card agent-form" method="post" action="{% if agent %}/agents/{{ agent.id }}{% else %}/agents{% endif %}">
+  <label>Name
+    <input name="name" value="{{ form.name }}" required>
+  </label>{{ err("name") }}
+
+  <label>What to look for
+    <textarea name="query" rows="3" required>{{ form.query }}</textarea>
+  </label>{{ err("query") }}
+
+  <fieldset>
+    <legend>Domains</legend>
+    {% for value, label in [("none", "Any domain"), ("include", "Only these domains"), ("exclude", "Exclude these domains")] %}
+    <label class="inline"><input type="radio" name="domain_mode" value="{{ value }}"{% if form.domain_mode == value %} checked{% endif %}> {{ label }}</label>
+    {% endfor %}
+    {{ err("domain_mode") }}
+    <textarea name="domains" rows="4" placeholder="spacenews.com">{{ form.domains }}</textarea>
+    <span class="hint">One per line or comma separated. Ignored when "Any domain" is selected.</span>
+    {{ err("domains") }}
+  </fieldset>
+
+  <div class="row">
+    <label>Look back (days, 1–30)
+      <input name="lookback_days" type="number" min="1" max="30" value="{{ form.lookback_days }}">
+    </label>
+    <label>Max searches (1–20)
+      <input name="max_searches" type="number" min="1" max="20" value="{{ form.max_searches }}">
+    </label>
+    <label>Daily at (HH:MM, optional)
+      <input name="schedule_time" type="time" value="{{ form.schedule_time }}">
+    </label>
+  </div>
+  {{ err("lookback_days") }} {{ err("max_searches") }} {{ err("schedule_time") }}
+
+  <div class="actions">
+    <button type="submit">{% if agent %}Save{% else %}Create agent{% endif %}</button>
+    <a href="{% if agent %}/agents/{{ agent.id }}{% else %}/{% endif %}">Cancel</a>
+  </div>
+</form>
+{% if agent %}
+<form class="danger" method="post" action="/agents/{{ agent.id }}/delete">
+  <button type="submit" class="delete">Delete this agent</button>
+  <span class="muted small">Also deletes its run history.</span>
+</form>
+{% endif %}
+{% endblock %}

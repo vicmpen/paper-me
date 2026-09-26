@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Run #{{ run.id }} · News agents{% endblock %}
+{% block content %}
+<p class="small"><a href="{% if agent %}/agents/{{ agent.id }}{% else %}/{% endif %}">← {% if agent %}{{ agent.name }}{% else %}Agents{% endif %}</a></p>
+<h1>Run #{{ run.id }} <span class="badge {{ run.status }}">{{ run.status }}</span></h1>
+<dl class="meta">
+  <dt>Trigger</dt><dd>{{ run.trigger_kind }}</dd>
+  <dt>Started</dt><dd>{{ run.started_at|when }}</dd>
+  <dt>Finished</dt><dd>{{ run.finished_at|when or "—" }}</dd>
+  <dt>Searches</dt><dd>{{ run.searches }}</dd>
+  <dt>Tokens</dt><dd class="muted">{{ run.input_tokens }} in / {{ run.output_tokens }} out</dd>
+</dl>
+{% if run.error %}<p class="error">{{ run.error }}</p>{% endif %}
+{% if run.status == "running" %}
+{% include "_run_status.html" %}
+{% elif run.status == "succeeded" %}
+<h2>Results</h2>
+{% include "_items.html" %}
+{% endif %}
+{% endblock %}

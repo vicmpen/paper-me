@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}{{ agent.name }} · News agents{% endblock %}
+{% block content %}
+<div class="title-row">
+  <h1>{{ agent.name }}</h1>
+  <div class="actions">
+    <form method="post" action="/agents/{{ agent.id }}/run" hx-post="/agents/{{ agent.id }}/run" hx-target="#run-status" hx-swap="outerHTML">
+      <button type="submit">Run now</button>
+    </form>
+    <a href="/agents/{{ agent.id }}/edit">Edit</a>
+  </div>
+</div>
+<p>{{ agent.query }}</p>
+<p class="small muted">
+  {% if agent.domain_mode == "none" %}any domain{% else %}{{ agent.domain_mode }}: {{ agent.domains|join(", ") }}{% endif %}
+  · last {{ agent.lookback_days }} days · up to {{ agent.max_searches }} searches
+  · {% if agent.schedule_time %}daily at {{ agent.schedule_time }}{% else %}manual only{% endif %}
+</p>
+
+{% include "_run_status.html" %}
+
+{% if shown %}
+<h2>Results</h2>
+{% if shown.id != run.id %}
+<p class="note">Showing results from the last successful run (<a href="/runs/{{ shown.id }}">{{ shown.finished_at|when }}</a>).</p>
+{% endif %}
+{% include "_items.html" %}
+{% endif %}
+
+{% if runs %}
+<h2>Run history</h2>
+<table class="runs">
+  <thead><tr><th>Run</th><th>Status</th><th>Trigger</th><th>Started</th><th>Searches</th><th>Tokens (in/out)</th></tr></thead>
+  <tbody>
+  {% for r in runs %}
+    <tr>
+      <td><a href="/runs/{{ r.id }}">#{{ r.id }}</a></td>
+      <td><span class="badge {{ r.status }}">{{ r.status }}</span></td>
+      <td>{{ r.trigger_kind }}</td>
+      <td>{{ r.started_at|when }}</td>
+      <td>{{ r.searches }}</td>
+      <td class="muted">{{ r.input_tokens }} / {{ r.output_tokens }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Agents</h1>
+{% if not rows %}
+<p class="muted">No agents yet. <a href="/agents/new">Create your first one.</a></p>
+{% endif %}
+{% for agent, run in rows %}
+<section class="card agent-row">
+  <div class="agent-main">
+    <h2><a href="/agents/{{ agent.id }}">{{ agent.name }}</a></h2>
+    <p class="muted">{{ agent.query|truncate(120, true, "…") }}</p>
+    <p class="small muted">
+      {% if agent.domain_mode == "none" %}any domain{% else %}{{ agent.domain_mode }}: {{ agent.domains|join(", ") }}{% endif %}
+      · {% if agent.schedule_time %}daily at {{ agent.schedule_time }}{% else %}manual only{% endif %}
+      · {% if run %}last run <span class="badge {{ run.status }}">{{ run.status }}</span> {{ run.started_at|when }}{% else %}never run{% endif %}
+    </p>
+  </div>
+  <div class="actions">
+    <form method="post" action="/agents/{{ agent.id }}/run"><button type="submit">Run now</button></form>
+    <a href="/agents/{{ agent.id }}/edit">Edit</a>
+  </div>
+</section>
+{% endfor %}
+{% endblock %}
