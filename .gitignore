@@ -22,3 +22,4 @@ CLAUDE.md
 .DS_Store
 # Web app database
 data/webapp.db*
+data/webapp.log*

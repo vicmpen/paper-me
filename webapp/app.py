@@ -11,6 +11,7 @@ monkeypatch them.
 
 from __future__ import annotations
 
+import logging
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
@@ -24,9 +25,12 @@ from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+import config
 from webapp import db, runner, scheduler
 
 load_dotenv()
+
+log = logging.getLogger(__name__)
 
 _HERE = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=_HERE / "templates")
@@ -55,6 +59,7 @@ templates.env.filters["when"] = _when
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    log.info("starting: model=%s", config.WEBAPP_MODEL)
     db.init_db()
     scheduler.start()
     try:
@@ -79,6 +84,8 @@ async def _reject_cross_site_posts(request: Request, call_next):
         origin = request.headers.get("origin")
         cross_site = request.headers.get("sec-fetch-site") == "cross-site"
         if cross_site or (origin and urlparse(origin).hostname not in _LOCAL_HOSTS):
+            log.warning("rejected cross-site POST %s (origin=%s, sec-fetch-site=%s)",
+                        request.url.path, origin, request.headers.get("sec-fetch-site"))
             return PlainTextResponse("cross-site request rejected", status_code=403)
     return await call_next(request)
 
@@ -150,8 +157,10 @@ def create_agent(request: Request, name: str = Form(""), query: str = Form(""),
             "schedule_time": schedule_time}
     inp, errors = db.validate_agent(form)
     if inp is None:
+        log.info("create agent rejected: invalid %s", ", ".join(sorted(errors)))
         return _form_page(request, form, errors, None, status_code=422)
     agent_id = db.create_agent(inp)
+    log.info("agent %d created: %r", agent_id, inp.name)
     scheduler.sync_jobs()
     return RedirectResponse(f"/agents/{agent_id}", status_code=303)
 
@@ -185,8 +194,10 @@ def update_agent(request: Request, agent_id: int, name: str = Form(""),
             "schedule_time": schedule_time}
     inp, errors = db.validate_agent(form)
     if inp is None:
+        log.info("update agent %d rejected: invalid %s", agent_id, ", ".join(sorted(errors)))
         return _form_page(request, form, errors, agent, status_code=422)
     db.update_agent(agent_id, inp)
+    log.info("agent %d updated: %r", agent_id, inp.name)
     scheduler.sync_jobs()
     return RedirectResponse(f"/agents/{agent_id}", status_code=303)
 
@@ -194,6 +205,7 @@ def update_agent(request: Request, agent_id: int, name: str = Form(""),
 @app.post("/agents/{agent_id}/delete")
 def delete_agent(agent_id: int):
     db.delete_agent(agent_id)
+    log.info("agent %d deleted", agent_id)
     scheduler.sync_jobs()
     return RedirectResponse("/", status_code=303)
 
@@ -202,6 +214,7 @@ def delete_agent(agent_id: int):
 def run_now(request: Request, agent_id: int):
     try:
         run_id = runner.start_run(agent_id, "manual")
+        log.info("manual run requested for agent %d -> run %d", agent_id, run_id)
     except LookupError:
         raise HTTPException(status_code=404)
     if request.headers.get("HX-Request"):

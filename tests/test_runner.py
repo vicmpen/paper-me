@@ -114,3 +114,25 @@ def test_execute_run_db_error_on_load_is_contained(tmp_db, monkeypatch):
     monkeypatch.setattr(tmp_db, "get_agent", real_get_agent)
     run = tmp_db.get_run(rid)
     assert run.status == "failed" and "locked" in run.error
+
+
+def test_execute_run_logs_lifecycle(tmp_db, monkeypatch, caplog):
+    caplog.set_level("INFO", logger="webapp.runner")
+    aid = make_agent(tmp_db)
+    rid, _ = tmp_db.create_run(aid, "manual")
+    monkeypatch.setattr(search_agent, "run_search", lambda agent, **kw: result("https://a.com/1"))
+    runner.execute_run(rid)
+    assert f"run {rid} started" in caplog.text
+    assert f"run {rid} succeeded" in caplog.text and "1 items" in caplog.text
+
+
+def test_execute_run_logs_unexpected_error_with_traceback(tmp_db, monkeypatch, caplog):
+    aid = make_agent(tmp_db)
+    rid, _ = tmp_db.create_run(aid, "manual")
+    def boom(agent, **kw):
+        raise RuntimeError("network down")
+    monkeypatch.setattr(search_agent, "run_search", boom)
+    runner.execute_run(rid)
+    raised = [r for r in caplog.records if "raised" in r.getMessage()]
+    assert raised and raised[0].exc_info is not None
+    assert f"run {rid} failed" in caplog.text and "network down" in caplog.text

@@ -181,3 +181,17 @@ def test_context_window_exceeded():
     c = FakeClient([resp([search_ok(), text('{"items": [')], stop="model_context_window_exceeded")])
     with pytest.raises(SearchError, match="context window"):
         run_search(agent(), client=c, today=TODAY)
+
+
+def test_logs_each_call_with_queries_and_errors(caplog):
+    caplog.set_level("INFO", logger="webapp.search_agent")
+    c = FakeClient([resp([NS(type="server_tool_use", name="web_search", input={"query": "tsitsipas atp"}),
+                          search_err("too_many_requests"), search_ok(),
+                          text(items_json(("https://a.com/1", "")))], searches=2)])
+    run_search(agent(), client=c, today=TODAY)
+    log = caplog.text
+    assert "search start" in log and "open-weight LLMs" in log
+    assert "claude call 1: stop=end_turn" in log and "searches=2" in log
+    assert "'tsitsipas atp'" in log
+    assert "too_many_requests" in log
+    assert "1 items returned, 1 kept" in log

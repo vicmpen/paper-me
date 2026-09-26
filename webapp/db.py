@@ -14,6 +14,7 @@ DB_PATH is read at call time so tests can monkeypatch it.
 from __future__ import annotations
 
 import json
+import logging
 import re
 import sqlite3
 from contextlib import closing
@@ -24,6 +25,8 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from webapp.search_agent import FoundItem
+
+log = logging.getLogger(__name__)
 
 DB_PATH: Path = Path(__file__).resolve().parent.parent / "data" / "webapp.db"
 
@@ -132,10 +135,13 @@ def init_db() -> None:
         # Any run still "running" at startup belongs to a previous process
         # whose thread is gone; without this it would spin in the UI forever.
         with conn:
-            conn.execute(
+            cur = conn.execute(
                 "UPDATE runs SET status='failed', error=?, finished_at=? WHERE status='running'",
                 ("interrupted (server restarted)", _now()),
             )
+    log.info("database ready at %s", DB_PATH)
+    if cur.rowcount:
+        log.warning("marked %d interrupted run(s) as failed", cur.rowcount)
 
 
 # --- validation ---

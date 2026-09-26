@@ -93,6 +93,11 @@ Notes:
   (web search results are token-heavy), plus $10 per 1,000 searches.
 - Scheduled runs only fire while the server is running; missed runs are
   not caught up.
+- Logs go to the terminal and to `data/webapp.log` (rotating, 5 MB × 4):
+  run start/finish, every Claude call with its search queries, tokens
+  and duration, scheduler activity, agent changes. `WEBAPP_LOG_LEVEL=DEBUG`
+  also shows the run-status polls; `ANTHROPIC_LOG=debug` adds SDK HTTP
+  detail.
 - Binds to localhost only, with no auth. Requests with a foreign `Host`
   header or cross-site POSTs are rejected.
 

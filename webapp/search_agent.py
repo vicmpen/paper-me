@@ -14,6 +14,8 @@ duplicates, date window) are done deterministically here.
 from __future__ import annotations
 
 import json
+import logging
+import time
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from typing import TYPE_CHECKING
@@ -26,6 +28,8 @@ if TYPE_CHECKING:
 
     from webapp.db import Agent
 
+
+log = logging.getLogger(__name__)
 
 MAX_TOKENS = 16000
 MAX_CONTINUATIONS = 5
@@ -125,6 +129,26 @@ def _count_searches(response) -> int:
     )
 
 
+def _log_call(n: int, response, seconds: float) -> None:
+    queries = [
+        (getattr(b, "input", None) or {}).get("query", "?")
+        for b in response.content
+        if getattr(b, "type", None) == "server_tool_use" and getattr(b, "name", None) == "web_search"
+    ]
+    search_errors = [
+        getattr(b.content, "error_code", "unknown")
+        for b in response.content
+        if getattr(b, "type", None) == "web_search_tool_result" and not isinstance(b.content, list)
+    ]
+    log.info("claude call %d: stop=%s %.1fs in=%d out=%d searches=%d",
+             n, response.stop_reason, seconds, response.usage.input_tokens,
+             response.usage.output_tokens, _count_searches(response))
+    for q in queries:
+        log.info("  web_search query: %r", q)
+    if search_errors:
+        log.warning("  web_search errors: %s", ", ".join(search_errors))
+
+
 def _trailing_text(content) -> str:
     """Concatenate the text blocks after the last non-text block."""
     parts: list[str] = []
@@ -192,12 +216,20 @@ def run_search(agent: Agent, *, client: anthropic.Anthropic | None = None,
         output_config={"format": {"type": "json_schema", "schema": ITEMS_SCHEMA}},
     )
 
+    tool = params["tools"][0]
+    domains = tool.get("allowed_domains") or tool.get("blocked_domains")
+    log.info("search start: model=%s mode=%s domains=%s lookback=%dd max_searches=%d query=%r",
+             config.WEBAPP_MODEL, agent.domain_mode, domains or "-", agent.lookback_days,
+             agent.max_searches, agent.query)
+
     input_tokens = output_tokens = searches = 0
     search_results: list = []
     continuations = 0
     while True:
+        started = time.monotonic()
         with client.messages.stream(messages=list(messages), **params) as stream:
             response = stream.get_final_message()
+        _log_call(continuations + 1, response, time.monotonic() - started)
         input_tokens += response.usage.input_tokens
         output_tokens += response.usage.output_tokens
         searches += _count_searches(response)
@@ -208,6 +240,7 @@ def run_search(agent: Agent, *, client: anthropic.Anthropic | None = None,
         if continuations >= MAX_CONTINUATIONS:
             raise SearchError(f"search did not finish after {MAX_CONTINUATIONS} continuations")
         continuations += 1
+        log.info("pause_turn: continuing (%d/%d)", continuations, MAX_CONTINUATIONS)
         messages.append({"role": "assistant", "content": response.content})
 
     if response.stop_reason == "refusal":
@@ -226,5 +259,9 @@ def run_search(agent: Agent, *, client: anthropic.Anthropic | None = None,
 
     items = _parse_items(_trailing_text(response.content))
     cutoff = date.fromisoformat(today) - timedelta(days=agent.lookback_days + 1)
-    return SearchResult(items=_filter_items(items, cutoff), input_tokens=input_tokens,
+    kept = _filter_items(items, cutoff)
+    log.info("search done: %d items returned, %d kept after url/dup/date filtering; "
+             "total in=%d out=%d searches=%d", len(items), len(kept),
+             input_tokens, output_tokens, searches)
+    return SearchResult(items=kept, input_tokens=input_tokens,
                         output_tokens=output_tokens, searches=searches)
