@@ -20,3 +20,5 @@ CLAUDE.md
 
 # OS
 .DS_Store
+# Web app database
+data/webapp.db*

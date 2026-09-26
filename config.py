@@ -48,3 +48,6 @@ HEALTH_RUNS_KEPT = 14
 
 # main.py
 ITEM_AGE_LIMIT_DAYS = 7
+
+# Web app (webapp/)
+WEBAPP_MODEL = "claude-sonnet-4-6"
