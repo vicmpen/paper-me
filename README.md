@@ -68,6 +68,34 @@ Run locally:
 python main.py
 ```
 
+## Web app
+
+A local web UI for ad-hoc news agents, separate from the daily email
+pipeline. Each agent has a free-text query, an optional domain filter
+(only these domains, or exclude these domains — the web search API
+accepts one or the other, not both), a lookback window, a search budget,
+and an optional daily run time. Runs use Claude's server-side
+`web_search` tool with a structured JSON output, and every run's results
+are kept in `data/webapp.db` (gitignored). Items already returned by an
+earlier run of the same agent are shown dimmed as "seen before".
+
+```
+source .venv/bin/activate
+python -m webapp          # http://127.0.0.1:8000
+pytest                    # tests, no network
+```
+
+Notes:
+
+- Needs `ANTHROPIC_API_KEY` (read from `.env`). Model is
+  `config.WEBAPP_MODEL`.
+- A run takes one to a few minutes and costs roughly $0.30+ on Sonnet 4.6
+  (web search results are token-heavy), plus $10 per 1,000 searches.
+- Scheduled runs only fire while the server is running; missed runs are
+  not caught up.
+- Binds to localhost only, with no auth. Requests with a foreign `Host`
+  header or cross-site POSTs are rejected.
+
 ## Provider rate limits
 
 Anthropic Tier 1 input token rate limit is 30K/min, which can be exceeded

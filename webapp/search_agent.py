@@ -172,7 +172,9 @@ def run_search(agent: Agent, *, client: anthropic.Anthropic | None = None,
     if client is None:
         import anthropic
 
-        client = anthropic.Anthropic(timeout=600, max_retries=2)
+        # Streaming keeps bytes (incl. pings) flowing during multi-minute
+        # searches; the timeout is per read, so a stalled stream fails fast.
+        client = anthropic.Anthropic(timeout=120, max_retries=2)
     if today is None:
         today = datetime.now(timezone.utc).date().isoformat()
     since = date.fromisoformat(today) - timedelta(days=agent.lookback_days)
@@ -194,7 +196,8 @@ def run_search(agent: Agent, *, client: anthropic.Anthropic | None = None,
     search_results: list = []
     continuations = 0
     while True:
-        response = client.messages.create(messages=list(messages), **params)
+        with client.messages.stream(messages=list(messages), **params) as stream:
+            response = stream.get_final_message()
         input_tokens += response.usage.input_tokens
         output_tokens += response.usage.output_tokens
         searches += _count_searches(response)
@@ -212,6 +215,8 @@ def run_search(agent: Agent, *, client: anthropic.Anthropic | None = None,
         raise SearchError("model refused" + (f": {category}" if category else ""))
     if response.stop_reason == "max_tokens":
         raise SearchError("output truncated")
+    if response.stop_reason == "model_context_window_exceeded":
+        raise SearchError("output truncated: context window exceeded")
     errors = [b.content for b in search_results if not isinstance(b.content, list)]
     if errors and len(errors) == len(search_results):
         code = getattr(errors[0], "error_code", "unknown")

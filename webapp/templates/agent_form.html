@@ -43,7 +43,7 @@
   </div>
 </form>
 {% if agent %}
-<form class="danger" method="post" action="/agents/{{ agent.id }}/delete">
+<form class="danger" method="post" action="/agents/{{ agent.id }}/delete" onsubmit="return confirm('Delete this agent and its run history?')">
   <button type="submit" class="delete">Delete this agent</button>
   <span class="muted small">Also deletes its run history.</span>
 </form>

@@ -60,5 +60,5 @@ def sync_jobs() -> None:
         _scheduler.add_job(
             _fire, CronTrigger(hour=hour, minute=minute), args=(agent.id,),
             id=f"{_JOB_PREFIX}{agent.id}", misfire_grace_time=300,
-            coalesce=True, max_instances=1,
+            coalesce=True, max_instances=1, replace_existing=True,
         )

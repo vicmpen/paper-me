@@ -27,14 +27,11 @@ def start_run(agent_id: int, trigger_kind: str) -> int:
 
 
 def execute_run(run_id: int) -> None:
-    run = db.get_run(run_id)
-    if run is None:
-        return
-    agent = db.get_agent(run.agent_id)
-    if agent is None:
-        return
-
     try:
+        run = db.get_run(run_id)
+        agent = db.get_agent(run.agent_id) if run else None
+        if agent is None:
+            return
         result = search_agent.run_search(agent)
         outcome = dict(status="succeeded", error=None, items=result.items,
                        input_tokens=result.input_tokens,

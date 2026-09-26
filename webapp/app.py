@@ -22,6 +22,7 @@ from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from webapp import db, runner, scheduler
 
@@ -64,6 +65,22 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=_HERE / "static"), name="static")
+
+# Local-only app with no auth: any web page the user visits could otherwise
+# POST here (create agents, fire paid runs, delete data), and DNS rebinding
+# could read results. Pin the Host header and reject cross-site writes.
+_LOCAL_HOSTS = ["127.0.0.1", "localhost"]
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=_LOCAL_HOSTS)
+
+
+@app.middleware("http")
+async def _reject_cross_site_posts(request: Request, call_next):
+    if request.method == "POST":
+        origin = request.headers.get("origin")
+        cross_site = request.headers.get("sec-fetch-site") == "cross-site"
+        if cross_site or (origin and urlparse(origin).hostname not in _LOCAL_HOSTS):
+            return PlainTextResponse("cross-site request rejected", status_code=403)
+    return await call_next(request)
 
 
 @app.exception_handler(StarletteHTTPException)
@@ -202,4 +219,9 @@ def run_detail(request: Request, run_id: int):
 
 @app.get("/runs/{run_id}/status", response_class=HTMLResponse)
 def run_status(request: Request, run_id: int):
-    return _status_partial(request, _run_or_404(run_id))
+    run = db.get_run(run_id)
+    if run is None:
+        # Run vanished (agent deleted mid-run). htmx ignores 4xx swaps, so a
+        # 404 here would leave the page polling forever; send it home instead.
+        return HTMLResponse("", headers={"HX-Redirect": "/"})
+    return _status_partial(request, run)

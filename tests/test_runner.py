@@ -1,3 +1,4 @@
+import sqlite3
 from types import SimpleNamespace
 
 import pytest
@@ -87,6 +88,7 @@ def test_scheduler_disabled_is_noop(tmp_db):
 
 def test_scheduler_sync_jobs(tmp_db, monkeypatch):
     monkeypatch.delenv("WEBAPP_DISABLE_SCHEDULER")
+    monkeypatch.setattr(runner, "start_run", lambda *a: None)  # never fire a real run
     a1 = make_agent(tmp_db, name="a", schedule_time="07:30")
     make_agent(tmp_db, name="b", schedule_time=None)
     scheduler.start()
@@ -99,3 +101,16 @@ def test_scheduler_sync_jobs(tmp_db, monkeypatch):
         assert scheduler._scheduler.get_jobs() == []
     finally:
         scheduler.shutdown()
+
+
+def test_execute_run_db_error_on_load_is_contained(tmp_db, monkeypatch):
+    aid = make_agent(tmp_db)
+    rid, _ = tmp_db.create_run(aid, "manual")
+    real_get_agent = tmp_db.get_agent
+    def locked(agent_id):
+        raise sqlite3.OperationalError("database is locked")
+    monkeypatch.setattr(tmp_db, "get_agent", locked)
+    runner.execute_run(rid)  # must not raise
+    monkeypatch.setattr(tmp_db, "get_agent", real_get_agent)
+    run = tmp_db.get_run(rid)
+    assert run.status == "failed" and "locked" in run.error

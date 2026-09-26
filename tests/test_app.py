@@ -10,7 +10,7 @@ from webapp.db import AgentInput
 def client(tmp_db, monkeypatch):
     for name in ("start", "shutdown", "sync_jobs"):
         monkeypatch.setattr(scheduler, name, lambda: None)
-    with TestClient(app_module.app) as c:
+    with TestClient(app_module.app, base_url="http://127.0.0.1") as c:
         yield c
 
 
@@ -125,7 +125,7 @@ def test_empty_results_message(client, tmp_db):
     assert "No matching news found" in client.get(f"/agents/{aid}").text
 
 
-@pytest.mark.parametrize("path", ["/agents/999", "/agents/999/edit", "/runs/999", "/runs/999/status"])
+@pytest.mark.parametrize("path", ["/agents/999", "/agents/999/edit", "/runs/999"])
 def test_404s(client, path):
     assert client.get(path).status_code == 404
 
@@ -135,3 +135,27 @@ def test_run_missing_agent_404(client, monkeypatch):
         raise LookupError(agent_id)
     monkeypatch.setattr(runner, "start_run", missing)
     assert client.post("/agents/999/run").status_code == 404
+
+
+def test_foreign_host_rejected(client):
+    assert client.get("/", headers={"Host": "evil.example:8000"}).status_code == 400
+
+
+@pytest.mark.parametrize("headers", [
+    {"Origin": "https://evil.example"},
+    {"Sec-Fetch-Site": "cross-site"},
+])
+def test_cross_site_post_rejected(client, tmp_db, headers):
+    r = client.post("/agents", data=form(), headers=headers, follow_redirects=False)
+    assert r.status_code == 403 and tmp_db.list_agents() == []
+
+
+def test_same_origin_post_allowed(client, tmp_db):
+    r = client.post("/agents", data=form(), follow_redirects=False,
+                    headers={"Origin": "http://127.0.0.1:8000", "Sec-Fetch-Site": "same-origin"})
+    assert r.status_code == 303
+
+
+def test_status_of_deleted_run_redirects_home(client):
+    r = client.get("/runs/999/status")
+    assert r.status_code == 200 and r.headers.get("HX-Redirect") == "/"

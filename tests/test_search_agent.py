@@ -42,9 +42,23 @@ class FakeClient:
         self.calls = []
         self.messages = self
 
-    def create(self, **kwargs):
+    def stream(self, **kwargs):
         self.calls.append(kwargs)
-        return self._responses.pop(0)
+        return _FakeStream(self._responses.pop(0))
+
+
+class _FakeStream:
+    def __init__(self, response):
+        self._response = response
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def get_final_message(self):
+        return self._response
 
 
 TODAY = "2026-09-26"
@@ -161,3 +175,9 @@ def test_post_filtering():
     r = run_search(agent(), client=FakeClient([resp([search_ok(), text(body)])]), today=TODAY)
     assert [i.url for i in r.items] == [
         "https://a.com/1", "https://b.com/edge", "https://c.com/nodate", "https://c.com/weird"]
+
+
+def test_context_window_exceeded():
+    c = FakeClient([resp([search_ok(), text('{"items": [')], stop="model_context_window_exceeded")])
+    with pytest.raises(SearchError, match="context window"):
+        run_search(agent(), client=c, today=TODAY)
