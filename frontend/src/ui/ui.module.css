@@ -1,0 +1,6 @@
+.mark { width: 1.75rem; flex: none; overflow: visible; }
+.courseStroke { fill: none; stroke: var(--course); stroke-width: 3.5; stroke-linejoin: round; }
+.legend { display: grid; gap: var(--space-2); font-size: var(--step--1); color: var(--ink-muted); }
+.legendRow { display: flex; align-items: center; gap: var(--space-3); }
+.legendRow dd { margin: 0; }
+.swatch { display: inline-block; width: 1.5rem; height: 0.75rem; border-radius: 2px; }

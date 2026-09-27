@@ -1,0 +1,60 @@
+/* Orienteering Course world: ISOM inks on runnable-forest white.
+   Each ink means exactly one thing; see src/ui/inks.ts. */
+:root {
+  color-scheme: light dark;
+  --ground: #ffffff;       /* runnable forest */
+  --ink: #16161a;
+  --ink-muted: #56565f;
+  --rule: #dcd9d2;
+  --course: #7b2cbf;       /* course, controls, live leg, links, actions */
+  --on-course: #ffffff;
+  --contour: #8c5a2b;      /* coverage rings: one per outlet */
+  --open: #ffd24d;         /* new since the last edition */
+  --thicket: #a5b36a;      /* continuing story, updated */
+  --water: #5fa7d6;        /* what it means */
+
+  --font-display: "Antonio Variable", "Arial Narrow", sans-serif;
+  --font-text: "Atkinson Hyperlegible Next Variable", system-ui, sans-serif;
+
+  --step--1: clamp(0.84rem, 0.81rem + 0.14vw, 0.92rem);
+  --step-0: clamp(1rem, 0.96rem + 0.2vw, 1.12rem);
+  --step-1: clamp(1.22rem, 1.13rem + 0.45vw, 1.45rem);
+  --step-2: clamp(1.55rem, 1.36rem + 0.95vw, 2.1rem);
+  --step-3: clamp(2.05rem, 1.66rem + 1.95vw, 3.2rem);
+  --step-4: clamp(2.8rem, 2rem + 4vw, 5.4rem);
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 5rem;
+  --measure: 64ch;
+  --rail: 3.25rem;         /* width of the course rail the controls sit on */
+
+  --dur-quick: 160ms;
+  --dur-leg: 420ms;
+  --ease-course: cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+@media (min-width: 48rem) {
+  :root { --rail: 4.75rem; }
+}
+
+/* Night map: the same inks on a deep ground, lifted for contrast. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ground: #101114;
+    --ink: #ecebe6;
+    --ink-muted: #a9a8af;
+    --rule: #2e2f35;
+    --course: #c39bff;
+    --on-course: #101114;
+    --contour: #d49c66;
+    --open: #ffd24d;
+    --thicket: #b9c77e;
+    --water: #7fbde6;
+  }
+}
