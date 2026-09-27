@@ -290,7 +290,10 @@ def _merge(per_query_hits: list[list[SearchHit]], since: date) -> list[SearchHit
 
 
 def _strip_tags(s: str) -> str:
-    return _RESULT_TAG_RE.sub("", s)
+    # Repeat until stable: removing an inner tag can join its neighbours into a new one.
+    while (t := _RESULT_TAG_RE.sub("", s)) != s:
+        s = t
+    return s
 
 
 def _results_block(hits: list[SearchHit]) -> str:
