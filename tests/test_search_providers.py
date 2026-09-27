@@ -41,6 +41,14 @@ def test_post_json_http_error_uses_tag(fake_post, caplog):
     assert KEY not in str(e.value) and KEY not in caplog.text
 
 
+def test_post_json_http_error_nested_blopus_message(fake_post):
+    fake_post.respond(401, {"error": {"code": "unauthorized",
+                                      "message": "Invalid or missing API key."}})
+    with pytest.raises(ProviderError) as e:
+        post_json("blopus", "https://x", headers={}, body={})
+    assert str(e.value) == "blopus: HTTP 401 Invalid or missing API key."
+
+
 def test_post_json_http_error_plain_text(fake_post):
     fake_post.respond(502, text="Bad gateway")
     with pytest.raises(ProviderError, match=r"^blopus: HTTP 502 Bad gateway$"):

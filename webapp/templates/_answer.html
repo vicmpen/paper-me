@@ -1,4 +1,4 @@
-{% if answer is not none %}
+{% if answer is defined and answer %}
 <h2>Answer</h2>
 <div class="card answer">{{ answer }}</div>
 {% endif %}

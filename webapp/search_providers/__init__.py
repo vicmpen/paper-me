@@ -113,6 +113,8 @@ def _error_detail(resp) -> str:
     if isinstance(data, dict):
         for key in ("tag", "error", "message", "detail"):
             value = data.get(key)
+            if isinstance(value, dict):  # e.g. Blopus: {"error": {"code": ..., "message": ...}}
+                value = value.get("message")
             if isinstance(value, str) and value:
                 return value[:200]
     return resp.text[:200].strip()

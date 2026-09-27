@@ -72,12 +72,16 @@ python main.py
 
 A local web UI for ad-hoc news agents, separate from the daily email
 pipeline. Each agent has a free-text query, an optional domain filter
-(only these domains, or exclude these domains — the web search API
-accepts one or the other, not both), a lookback window, a search budget,
-and an optional daily run time. Runs use Claude's server-side
-`web_search` tool with a structured JSON output, and every run's results
-are kept in `data/webapp.db` (gitignored). Items already returned by an
-earlier run of the same agent are shown dimmed as "seen before".
+(only these domains, or exclude these domains — one or the other, not
+both), a lookback window, a search budget, and an optional daily run
+time. A run is Claude planning 1..N short queries (N = the search
+budget), the configured search provider (`config.WEBAPP_SEARCH_PROVIDER`:
+`"exa"` or `"blopus"`) running them, then Claude writing the answer that
+follows the agent's "How should the response look?" instructions, citing
+numbered source cards. Every run's answer and sources are kept in
+`data/webapp.db` (gitignored); an existing `data/webapp.db` is migrated
+in place on first start. Items already returned by an earlier run of the
+same agent are shown dimmed as "seen before".
 
 ```
 source .venv/bin/activate
@@ -87,17 +91,23 @@ pytest                    # tests, no network
 
 Notes:
 
-- Needs `ANTHROPIC_API_KEY` (read from `.env`). Model is
+- Needs `ANTHROPIC_API_KEY` plus the key for the chosen provider:
+  `EXA_API_KEY` or `BLOPUS_API_KEY` (read from `.env`). Model is
   `config.WEBAPP_MODEL`.
-- A run takes one to a few minutes and costs roughly $0.30+ on Sonnet 4.6
-  (web search results are token-heavy), plus $10 per 1,000 searches.
+- To switch provider, change `WEBAPP_SEARCH_PROVIDER` and restart. To add
+  one, write a module in `webapp/search_providers/` and add an entry to
+  `_PROVIDERS` there.
+- A run costs two small Claude calls (a live run measured ~13.5K input /
+  ~0.5K output tokens with `claude-sonnet-5`) plus the provider's
+  per-search charge (Exa reported ~$0.007 per query).
 - Scheduled runs only fire while the server is running; missed runs are
   not caught up.
 - Logs go to the terminal and to `data/webapp.log` (rotating, 5 MB × 4):
-  run start/finish, every Claude call with its search queries, tokens
-  and duration, scheduler activity, agent changes. `WEBAPP_LOG_LEVEL=DEBUG`
-  also shows the run-status polls; `ANTHROPIC_LOG=debug` adds SDK HTTP
-  detail.
+  run start/finish, the planned queries, each provider search with its
+  hit count, time and cost (Exa) or remaining quota (Blopus), each Claude
+  call with its tokens and duration, scheduler activity, agent changes.
+  `WEBAPP_LOG_LEVEL=DEBUG` also shows the run-status polls;
+  `ANTHROPIC_LOG=debug` adds SDK HTTP detail.
 - Binds to localhost only, with no auth. Requests with a foreign `Host`
   header or cross-site POSTs are rejected.
 

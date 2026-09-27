@@ -227,3 +227,22 @@ def test_old_run_without_answer_has_no_labels(client, tmp_db):
         assert 'class="cite"' not in body and "<h2>Answer</h2>" not in body
         assert "Old" in body
     assert "<dd>—</dd>" in client.get(f"/runs/{rid}").text
+
+
+def test_empty_answer_hides_answer_block_keeps_labels(client, tmp_db):
+    aid = make_agent(tmp_db)
+    rid = _finished_run(tmp_db, aid, [_item("One", "https://a.com/1", "S")], answer="",
+                        provider="exa")
+    for path in (f"/agents/{aid}", f"/runs/{rid}"):
+        body = client.get(path).text
+        assert "<h2>Answer</h2>" not in body
+        assert '<span class="cite">[1]</span>' in body
+
+
+def test_partials_without_answer_in_context():
+    from types import SimpleNamespace
+    item = SimpleNamespace(title="T", url="https://a.com/x", source="S", published="",
+                           summary="s", seen_before=False)
+    items_html = app_module.templates.get_template("_items.html").render(items=[item])
+    assert 'class="cite"' not in items_html and "No sources." not in items_html
+    assert "Answer" not in app_module.templates.get_template("_answer.html").render()

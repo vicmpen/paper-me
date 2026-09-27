@@ -4,7 +4,7 @@
   {% set host = item.url|hostname %}
   <li class="card item{% if item.seen_before %} seen{% endif %}">
     <div class="item-head">
-      {% if answer is not none %}<span class="cite">[{{ loop.index }}]</span>{% endif %}
+      {% if answer is defined and answer is not none %}<span class="cite">[{{ loop.index }}]</span>{% endif %}
       <a href="{{ item.url }}" target="_blank" rel="noopener noreferrer">{{ item.title }}</a>
       <span class="host">{{ host }}</span>
       {% if item.seen_before %}<span class="tag">seen before</span>{% endif %}
@@ -14,7 +14,7 @@
   </li>
   {% endfor %}
 </ul>
-{% elif answer is not none %}
+{% elif answer is defined and answer is not none %}
 <p class="muted">No sources.</p>
 {% else %}
 <p class="muted">No matching news found in this window.</p>
