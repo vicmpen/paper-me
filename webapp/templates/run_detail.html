@@ -5,6 +5,7 @@
 <h1>Run #{{ run.id }} <span class="badge {{ run.status }}">{{ run.status }}</span></h1>
 <dl class="meta">
   <dt>Trigger</dt><dd>{{ run.trigger_kind }}</dd>
+  <dt>Provider</dt><dd>{{ run.provider or "—" }}</dd>
   <dt>Started</dt><dd>{{ run.started_at|when }}</dd>
   <dt>Finished</dt><dd>{{ run.finished_at|when or "—" }}</dd>
   <dt>Searches</dt><dd>{{ run.searches }}</dd>
@@ -14,7 +15,8 @@
 {% if run.status == "running" %}
 {% include "_run_status.html" %}
 {% elif run.status == "succeeded" %}
-<h2>Results</h2>
+{% include "_answer.html" %}
+<h2>{% if answer is not none %}Sources{% else %}Results{% endif %}</h2>
 {% include "_items.html" %}
 {% endif %}
 {% endblock %}

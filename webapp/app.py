@@ -116,6 +116,7 @@ def _agent_to_form(agent: db.Agent) -> dict[str, str]:
         "name": agent.name, "query": agent.query, "domain_mode": agent.domain_mode,
         "domains": "\n".join(agent.domains), "lookback_days": str(agent.lookback_days),
         "max_searches": str(agent.max_searches), "schedule_time": agent.schedule_time or "",
+        "response_instructions": agent.response_instructions,
     }
 
 
@@ -143,7 +144,8 @@ def index(request: Request):
 @app.get("/agents/new", response_class=HTMLResponse)
 def new_agent(request: Request):
     form = {"name": "", "query": "", "domain_mode": "none", "domains": "",
-            "lookback_days": "7", "max_searches": "5", "schedule_time": ""}
+            "lookback_days": "7", "max_searches": "5", "schedule_time": "",
+            "response_instructions": ""}
     return _form_page(request, form, {}, None)
 
 
@@ -151,10 +153,10 @@ def new_agent(request: Request):
 def create_agent(request: Request, name: str = Form(""), query: str = Form(""),
                  domain_mode: str = Form(""), domains: str = Form(""),
                  lookback_days: str = Form(""), max_searches: str = Form(""),
-                 schedule_time: str = Form("")):
+                 schedule_time: str = Form(""), response_instructions: str = Form("")):
     form = {"name": name, "query": query, "domain_mode": domain_mode, "domains": domains,
             "lookback_days": lookback_days, "max_searches": max_searches,
-            "schedule_time": schedule_time}
+            "schedule_time": schedule_time, "response_instructions": response_instructions}
     inp, errors = db.validate_agent(form)
     if inp is None:
         log.info("create agent rejected: invalid %s", ", ".join(sorted(errors)))
@@ -174,6 +176,7 @@ def agent_detail(request: Request, agent_id: int):
     items = db.list_items(shown.id) if shown else []
     return templates.TemplateResponse(request, "agent_detail.html", {
         "agent": agent, "runs": runs, "run": latest, "shown": shown, "items": items,
+        "answer": shown.answer if shown else None,
     })
 
 
@@ -187,11 +190,12 @@ def edit_agent(request: Request, agent_id: int):
 def update_agent(request: Request, agent_id: int, name: str = Form(""),
                  query: str = Form(""), domain_mode: str = Form(""),
                  domains: str = Form(""), lookback_days: str = Form(""),
-                 max_searches: str = Form(""), schedule_time: str = Form("")):
+                 max_searches: str = Form(""), schedule_time: str = Form(""),
+                 response_instructions: str = Form("")):
     agent = _agent_or_404(agent_id)
     form = {"name": name, "query": query, "domain_mode": domain_mode, "domains": domains,
             "lookback_days": lookback_days, "max_searches": max_searches,
-            "schedule_time": schedule_time}
+            "schedule_time": schedule_time, "response_instructions": response_instructions}
     inp, errors = db.validate_agent(form)
     if inp is None:
         log.info("update agent %d rejected: invalid %s", agent_id, ", ".join(sorted(errors)))
@@ -227,6 +231,7 @@ def run_detail(request: Request, run_id: int):
     run = _run_or_404(run_id)
     return templates.TemplateResponse(request, "run_detail.html", {
         "run": run, "agent": db.get_agent(run.agent_id), "items": db.list_items(run_id),
+        "answer": run.answer,
     })
 
 

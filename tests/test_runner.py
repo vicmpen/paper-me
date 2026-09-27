@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
+import config
 from webapp import runner, scheduler, search_agent
 from webapp.db import AgentInput
 
@@ -137,3 +138,24 @@ def test_execute_run_logs_unexpected_error_with_traceback(tmp_db, monkeypatch, c
     raised = [r for r in caplog.records if "raised" in r.getMessage()]
     assert raised and raised[0].exc_info is not None
     assert f"run {rid} failed" in caplog.text and "network down" in caplog.text
+
+
+def test_execute_run_stores_answer_and_provider(tmp_db, monkeypatch):
+    aid = make_agent(tmp_db)
+    rid, _ = tmp_db.create_run(aid, "manual")
+    monkeypatch.setattr(search_agent, "run_search", lambda agent, **kw: result("https://a.com/1"))
+    runner.execute_run(rid)
+    run = tmp_db.get_run(rid)
+    assert run.answer == "an answer" and run.provider == "exa"
+
+
+def test_execute_run_failure_records_provider(tmp_db, monkeypatch):
+    monkeypatch.setattr(config, "WEBAPP_SEARCH_PROVIDER", "blopus")
+    aid = make_agent(tmp_db)
+    rid, _ = tmp_db.create_run(aid, "manual")
+    def boom(agent, **kw):
+        raise search_agent.SearchError("search provider failed: blopus: HTTP 500 x")
+    monkeypatch.setattr(search_agent, "run_search", boom)
+    runner.execute_run(rid)
+    run = tmp_db.get_run(rid)
+    assert run.status == "failed" and run.provider == "blopus" and run.answer is None

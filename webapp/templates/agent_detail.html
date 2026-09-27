@@ -16,14 +16,16 @@
   · last {{ agent.lookback_days }} days · up to {{ agent.max_searches }} searches
   · {% if agent.schedule_time %}daily at {{ agent.schedule_time }}{% else %}manual only{% endif %}
 </p>
+<p class="small muted">Response: {% if agent.response_instructions %}{{ agent.response_instructions|truncate(120) }}{% else %}default briefing{% endif %}</p>
 
 {% include "_run_status.html" %}
 
 {% if shown %}
-<h2>Results</h2>
 {% if shown.id != run.id %}
 <p class="note">Showing results from the last successful run (<a href="/runs/{{ shown.id }}">{{ shown.finished_at|when }}</a>).</p>
 {% endif %}
+{% include "_answer.html" %}
+<h2>{% if answer is not none %}Sources{% else %}Results{% endif %}</h2>
 {% include "_items.html" %}
 {% endif %}
 

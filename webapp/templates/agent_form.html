@@ -13,6 +13,12 @@
     <textarea name="query" rows="3" required>{{ form.query }}</textarea>
   </label>{{ err("query") }}
 
+  <label>How should the response look?
+    <textarea name="response_instructions" rows="3" placeholder='e.g. "Answer in 2 sentences" or "Bullet list, one line per story"'>{{ form.response_instructions }}</textarea>
+  </label>
+  <span class="hint">Optional. Blank = short news briefing.</span>
+  {{ err("response_instructions") }}
+
   <fieldset>
     <legend>Domains</legend>
     {% for value, label in [("none", "Any domain"), ("include", "Only these domains"), ("exclude", "Exclude these domains")] %}
