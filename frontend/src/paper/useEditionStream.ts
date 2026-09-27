@@ -27,6 +27,7 @@ export function useEditionStream(runId: number | null, agentId: number): Edition
   useEffect(() => {
     setState(INITIAL);
     if (runId == null) return;
+    let live = true;
     const compiler = createSpecStreamCompiler<Spec>();
     const source = openEditionStream(runId);
     const publish = () => {
@@ -58,17 +59,24 @@ export function useEditionStream(runId: number | null, agentId: number): Edition
       if (source.readyState !== EventSource.CLOSED) return;
       fetchPaper(agentId).then(
         (paper) => {
+          if (!live) return;
           const exists = paper.editions.some((e) => e.run_id === runId);
           setState((s) => (exists
             ? { ...s, error: s.error ?? "Lost the connection to this edition.", done: true }
             : { ...s, notFound: true, done: true }));
         },
-        (error: unknown) => setState((s) => ({
-          ...s, notFound: error instanceof NotFoundError, error: s.error ?? "Couldn't load this edition.", done: true,
-        })),
+        (error: unknown) => {
+          if (!live) return;
+          setState((s) => ({
+            ...s, notFound: error instanceof NotFoundError, error: s.error ?? "Couldn't load this edition.", done: true,
+          }));
+        },
       );
     };
-    return () => source.close();
+    return () => {
+      live = false;
+      source.close();
+    };
   }, [runId, agentId]);
 
   return state;

@@ -58,6 +58,21 @@ describe("useEditionStream", () => {
     await waitFor(() => expect(result.current.notFound).toBe(true));
   });
 
+  it("a paper fetch that settles after the run changed is ignored", async () => {
+    let respond: (response: Response) => void = () => {};
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((resolve) => { respond = resolve; })));
+    const { result, rerender } = renderHook(({ runId }) => useEditionStream(runId, 3), {
+      initialProps: { runId: 10 },
+    });
+    act(() => MockEventSource.last().fail(MockEventSource.CLOSED));
+    rerender({ runId: 11 });
+    await act(async () => respond(new Response(JSON.stringify({
+      agent: { id: 3, name: "Oil", query: "q" }, current_run_id: 11, editions: [],
+    }), { status: 200 })));
+    expect(result.current.notFound).toBe(false);
+    expect(result.current.done).toBe(false);
+  });
+
   it("a reconnecting stream is left to the browser", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
