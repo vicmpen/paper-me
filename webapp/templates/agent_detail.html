@@ -4,6 +4,7 @@
 <div class="title-row">
   <h1>{{ agent.name }}</h1>
   <div class="actions">
+    <a href="/paper/{{ agent.id }}">Read the paper</a>
     <form method="post" action="/agents/{{ agent.id }}/run" hx-post="/agents/{{ agent.id }}/run" hx-target="#run-status" hx-swap="outerHTML">
       <button type="submit">Run now</button>
     </form>

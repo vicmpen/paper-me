@@ -7,6 +7,8 @@ validation goes through `db.validate_agent` and re-renders the HTML form.
 
 runner/scheduler/db are called as module attributes so tests can
 monkeypatch them.
+
+The React paper lives under /paper (static build) and /api (webapp/api.py).
 """
 
 from __future__ import annotations
@@ -19,14 +21,16 @@ from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 import config
-from webapp import db, runner, scheduler
+from webapp import api, db, runner, scheduler
+from webapp.resources import agent_or_404 as _agent_or_404
+from webapp.resources import run_or_404 as _run_or_404
 
 load_dotenv()
 
@@ -70,6 +74,12 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=_HERE / "static"), name="static")
+# The React paper (frontend/, built with npm run build) is served same-origin
+# under /paper so the Host pin and cross-site POST guard cover it too.
+_DIST = _HERE.parent / "frontend" / "dist"
+_paper_assets = StaticFiles(directory=_DIST / "assets", check_dir=False)
+app.mount("/paper/assets", _paper_assets, name="paper-assets")
+app.include_router(api.router)
 
 # Local-only app with no auth: any web page the user visits could otherwise
 # POST here (create agents, fire paid runs, delete data), and DNS rebinding
@@ -95,20 +105,6 @@ async def _http_error(request: Request, exc: StarletteHTTPException):
     if exc.status_code == 404:
         return templates.TemplateResponse(request, "404.html", {}, status_code=404)
     return PlainTextResponse(str(exc.detail), status_code=exc.status_code)
-
-
-def _agent_or_404(agent_id: int) -> db.Agent:
-    agent = db.get_agent(agent_id)
-    if agent is None:
-        raise HTTPException(status_code=404)
-    return agent
-
-
-def _run_or_404(run_id: int) -> db.Run:
-    run = db.get_run(run_id)
-    if run is None:
-        raise HTTPException(status_code=404)
-    return run
 
 
 def _agent_to_form(agent: db.Agent) -> dict[str, str]:
@@ -243,3 +239,13 @@ def run_status(request: Request, run_id: int):
         # 404 here would leave the page polling forever; send it home instead.
         return HTMLResponse("", headers={"HX-Redirect": "/"})
     return _status_partial(request, run)
+
+
+@app.get("/paper/{path:path}", include_in_schema=False)
+def paper_app(path: str):
+    # Every client-side route (/paper/3, /paper/3/10, /paper/styleguide) gets
+    # the SPA shell; React Router picks the page.
+    index = _DIST / "index.html"
+    if not index.is_file():
+        raise HTTPException(status_code=503, detail="Frontend not built: run npm run build")
+    return FileResponse(index)
