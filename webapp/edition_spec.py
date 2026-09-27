@@ -201,6 +201,10 @@ class EditionSpec:
         missing = [c for c in page["children"] if c not in self.elements]
         if missing:
             raise InvalidEdition(f"missing children: {missing}")
+        if self.root in page["children"]:
+            raise InvalidEdition("Page lists itself as a child")
+        if len(set(page["children"])) != len(page["children"]):
+            raise InvalidEdition("Page has repeated children")
         leads = [eid for eid, e in self.elements.items() if e["type"] == "LeadStory"]
         if len(leads) > 1:
             raise InvalidEdition("more than one LeadStory")

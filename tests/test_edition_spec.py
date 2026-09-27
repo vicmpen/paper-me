@@ -126,6 +126,8 @@ def test_nested_patches_apply():
     ((story("s1", [1]),), "root"),
     ((ROOT, story("page", [1])), "root"),
     ((ROOT, page("s1")), "missing"),
+    ((ROOT, page("page")), "lists itself"),
+    ((ROOT, page("s1", "s1"), story("s1", [1])), "repeated"),
     ((ROOT, page("lead", "l2"), lead([1, 3]), lead([4, 5], eid="l2")), "more than one LeadStory"),
     ((ROOT, page("s1", "lead"), story("s1", [1]), lead([1, 3])), "first child"),
 ])
