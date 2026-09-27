@@ -23,3 +23,13 @@ CLAUDE.md
 # Web app database
 data/webapp.db*
 data/webapp.log*
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Impeccable working files (the surface brief and reference webps are committed)
+.impeccable/decision/
+.impeccable/questions/
+.impeccable/review/
+.impeccable/reference/*.png

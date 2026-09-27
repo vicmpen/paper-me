@@ -1,0 +1,363 @@
+{
+  "Page": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "bottomLine": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 280
+          },
+          "cites": {
+            "minItems": 1,
+            "maxItems": 10,
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 40
+            }
+          }
+        },
+        "required": [
+          "text",
+          "cites"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "additionalProperties": false
+  },
+  "LeadStory": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "kicker": {
+        "type": "string",
+        "maxLength": 40
+      },
+      "headline": {
+        "type": "string",
+        "maxLength": 160
+      },
+      "dek": {
+        "type": "string",
+        "maxLength": 400
+      },
+      "body": {
+        "minItems": 1,
+        "maxItems": 3,
+        "type": "array",
+        "items": {
+          "type": "string",
+          "maxLength": 1200
+        }
+      },
+      "cites": {
+        "minItems": 1,
+        "maxItems": 10,
+        "type": "array",
+        "items": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 40
+        }
+      }
+    },
+    "required": [
+      "headline",
+      "dek",
+      "body",
+      "cites"
+    ],
+    "additionalProperties": false
+  },
+  "Story": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "kicker": {
+        "type": "string",
+        "maxLength": 40
+      },
+      "headline": {
+        "type": "string",
+        "maxLength": 160
+      },
+      "dek": {
+        "type": "string",
+        "maxLength": 400
+      },
+      "cites": {
+        "minItems": 1,
+        "maxItems": 10,
+        "type": "array",
+        "items": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 40
+        }
+      },
+      "weight": {
+        "type": "string",
+        "enum": [
+          "major",
+          "minor"
+        ]
+      }
+    },
+    "required": [
+      "headline",
+      "dek",
+      "cites",
+      "weight"
+    ],
+    "additionalProperties": false
+  },
+  "Briefs": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "title": {
+        "type": "string",
+        "maxLength": 40
+      },
+      "items": {
+        "minItems": 1,
+        "maxItems": 8,
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string",
+              "maxLength": 500
+            },
+            "cites": {
+              "minItems": 1,
+              "maxItems": 10,
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 40
+              }
+            }
+          },
+          "required": [
+            "text",
+            "cites"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    "required": [
+      "title",
+      "items"
+    ],
+    "additionalProperties": false
+  },
+  "Split": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "title": {
+        "type": "string",
+        "maxLength": 80
+      },
+      "sides": {
+        "minItems": 2,
+        "maxItems": 2,
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "label": {
+              "type": "string",
+              "maxLength": 40
+            },
+            "direction": {
+              "type": "string",
+              "enum": [
+                "up",
+                "down",
+                "neutral"
+              ]
+            },
+            "points": {
+              "minItems": 1,
+              "maxItems": 6,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  "cites": {
+                    "minItems": 1,
+                    "maxItems": 10,
+                    "type": "array",
+                    "items": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 40
+                    }
+                  }
+                },
+                "required": [
+                  "text",
+                  "cites"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "label",
+            "direction",
+            "points"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    "required": [
+      "title",
+      "sides"
+    ],
+    "additionalProperties": false
+  },
+  "Figures": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "items": {
+        "minItems": 1,
+        "maxItems": 4,
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "value": {
+              "type": "string",
+              "maxLength": 24
+            },
+            "label": {
+              "type": "string",
+              "maxLength": 80
+            },
+            "cites": {
+              "minItems": 1,
+              "maxItems": 10,
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 40
+              }
+            }
+          },
+          "required": [
+            "value",
+            "label",
+            "cites"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    "required": [
+      "items"
+    ],
+    "additionalProperties": false
+  },
+  "Timeline": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "title": {
+        "type": "string",
+        "maxLength": 80
+      },
+      "events": {
+        "minItems": 2,
+        "maxItems": 10,
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "date": {
+              "type": "string",
+              "maxLength": 24
+            },
+            "text": {
+              "type": "string",
+              "maxLength": 500
+            },
+            "cites": {
+              "minItems": 1,
+              "maxItems": 10,
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 40
+              }
+            }
+          },
+          "required": [
+            "date",
+            "text",
+            "cites"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    "required": [
+      "title",
+      "events"
+    ],
+    "additionalProperties": false
+  },
+  "Analysis": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "heading": {
+        "type": "string",
+        "maxLength": 60
+      },
+      "paragraphs": {
+        "minItems": 1,
+        "maxItems": 3,
+        "type": "array",
+        "items": {
+          "type": "string",
+          "maxLength": 1200
+        }
+      },
+      "cites": {
+        "minItems": 1,
+        "maxItems": 10,
+        "type": "array",
+        "items": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 40
+        }
+      }
+    },
+    "required": [
+      "heading",
+      "paragraphs",
+      "cites"
+    ],
+    "additionalProperties": false
+  }
+}
