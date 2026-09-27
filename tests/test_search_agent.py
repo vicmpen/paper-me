@@ -3,6 +3,7 @@ from types import SimpleNamespace as NS
 
 import pytest
 
+from webapp import search_agent
 from webapp.search_agent import SearchError, run_search
 
 
@@ -57,6 +58,9 @@ class _FakeStream:
     def __exit__(self, *exc):
         return False
 
+    def __iter__(self):
+        return iter(["event"])
+
     def get_final_message(self):
         return self._response
 
@@ -71,10 +75,10 @@ def test_success_basic_and_request_shape():
     assert [i.url for i in r.items] == ["https://a.com/1"]
     assert (r.input_tokens, r.output_tokens, r.searches) == (100, 10, 1)
     call = c.calls[0]
-    assert call["model"] == "claude-sonnet-4-6"
+    assert call["model"] == "claude-haiku-4-5"
     assert call["output_config"]["format"]["type"] == "json_schema"
     tool = call["tools"][0]
-    assert tool["type"] == "web_search_20260209" and tool["max_uses"] == 5
+    assert tool["type"] == "web_search_20250305" and tool["max_uses"] == 5
     assert "allowed_domains" not in tool and "blocked_domains" not in tool
     user = call["messages"][0]["content"]
     assert TODAY in user and "open-weight LLMs" in user and "2026-09-19" in user
@@ -195,3 +199,10 @@ def test_logs_each_call_with_queries_and_errors(caplog):
     assert "'tsitsipas atp'" in log
     assert "too_many_requests" in log
     assert "1 items returned, 1 kept" in log
+
+
+def test_overall_timeout(monkeypatch):
+    monkeypatch.setattr(search_agent, "TIMEOUT_SECONDS", -1)
+    c = FakeClient([resp([text(items_json())])])
+    with pytest.raises(SearchError, match="timed out"):
+        run_search(agent(), client=c, today=TODAY)

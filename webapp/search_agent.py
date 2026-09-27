@@ -33,6 +33,9 @@ log = logging.getLogger(__name__)
 
 MAX_TOKENS = 16000
 MAX_CONTINUATIONS = 5
+# Wall-clock cap for the whole search. The client's read timeout only catches
+# a silent stream; a stream that keeps sending events could otherwise run forever.
+TIMEOUT_SECONDS = 180
 
 SYSTEM_PROMPT = """\
 You are a news researcher. Search the web for news published within the
@@ -109,7 +112,7 @@ class SearchResult:
 
 
 def _build_tool(agent: Agent) -> dict:
-    tool = {"type": "web_search_20260209", "name": "web_search", "max_uses": agent.max_searches}
+    tool = {"type": "web_search_20250305", "name": "web_search", "max_uses": agent.max_searches}
     if agent.domain_mode == "include":
         tool["allowed_domains"] = agent.domains
     if agent.domain_mode == "exclude":
@@ -225,9 +228,13 @@ def run_search(agent: Agent, *, client: anthropic.Anthropic | None = None,
     input_tokens = output_tokens = searches = 0
     search_results: list = []
     continuations = 0
+    deadline = time.monotonic() + TIMEOUT_SECONDS
     while True:
         started = time.monotonic()
         with client.messages.stream(messages=list(messages), **params) as stream:
+            for _ in stream:
+                if time.monotonic() > deadline:
+                    raise SearchError(f"search timed out after {TIMEOUT_SECONDS}s")
             response = stream.get_final_message()
         _log_call(continuations + 1, response, time.monotonic() - started)
         input_tokens += response.usage.input_tokens
