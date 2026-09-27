@@ -50,4 +50,7 @@ HEALTH_RUNS_KEPT = 14
 ITEM_AGE_LIMIT_DAYS = 7
 
 # Web app (webapp/)
-WEBAPP_MODEL = "claude-haiku-4-5"
+WEBAPP_MODEL = "claude-sonnet-5"
+WEBAPP_EFFORT = "low"                 # None = omit output_config.effort (needed for Haiku 4.5)
+WEBAPP_SEARCH_PROVIDER = "exa"        # "exa" | "blopus" (see webapp/search_providers)
+WEBAPP_RESULTS_PER_QUERY = 10         # upper bound per query
