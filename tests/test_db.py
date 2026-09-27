@@ -1,3 +1,4 @@
+import sqlite3
 from types import SimpleNamespace
 
 import pytest
@@ -161,3 +162,94 @@ def test_init_db_marks_interrupted(tmp_db):
     tmp_db.init_db()
     run = tmp_db.get_run(rid)
     assert run.status == "failed" and "interrupted" in run.error and run.finished_at
+
+
+# --- response instructions, answer, provider ---
+
+def test_validate_response_instructions(tmp_db):
+    inp, errs = tmp_db.validate_agent(form(response_instructions="  Two sentences.  "))
+    assert errs == {} and inp.response_instructions == "Two sentences."
+    inp, errs = tmp_db.validate_agent(form(response_instructions="x" * 2000))
+    assert errs == {}
+    inp, errs = tmp_db.validate_agent(form(response_instructions="x" * 2001))
+    assert inp is None
+    assert errs["response_instructions"] == "Keep this to 2000 characters or fewer."
+    inp, errs = tmp_db.validate_agent(form())  # field absent from the form
+    assert inp.response_instructions == ""
+
+
+def test_response_instructions_round_trip(tmp_db):
+    aid = tmp_db.create_agent(make_input(response_instructions="Bullets."))
+    assert tmp_db.get_agent(aid).response_instructions == "Bullets."
+    tmp_db.update_agent(aid, make_input(response_instructions="One line."))
+    assert tmp_db.get_agent(aid).response_instructions == "One line."
+    assert tmp_db.list_agents()[0].response_instructions == "One line."
+
+
+def test_finish_run_stores_answer_provider_and_item_order(tmp_db):
+    aid = tmp_db.create_agent(make_input())
+    rid, _ = tmp_db.create_run(aid, "manual")
+    tmp_db.finish_run(rid, status="succeeded", error=None, input_tokens=1, output_tokens=1,
+                      searches=2, items=[found("https://b.com/2"), found("https://a.com/1")],
+                      answer="See [1] and [2].", provider="exa")
+    run = tmp_db.get_run(rid)
+    assert run.answer == "See [1] and [2]." and run.provider == "exa"
+    assert [i.url for i in tmp_db.list_items(rid)] == ["https://b.com/2", "https://a.com/1"]
+
+
+def test_finish_run_without_answer_defaults_none(tmp_db):
+    aid = tmp_db.create_agent(make_input())
+    rid, _ = tmp_db.create_run(aid, "manual")
+    tmp_db.finish_run(rid, status="failed", error="x", input_tokens=0, output_tokens=0,
+                      searches=0, items=[])
+    run = tmp_db.get_run(rid)
+    assert run.answer is None and run.provider is None
+
+
+OLD_SCHEMA = """
+CREATE TABLE agents (
+  id INTEGER PRIMARY KEY, name TEXT NOT NULL, query TEXT NOT NULL,
+  domain_mode TEXT NOT NULL, domains TEXT NOT NULL, lookback_days INTEGER NOT NULL,
+  max_searches INTEGER NOT NULL, schedule_time TEXT,
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE TABLE runs (
+  id INTEGER PRIMARY KEY,
+  agent_id INTEGER NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+  trigger_kind TEXT NOT NULL, status TEXT NOT NULL, started_at TEXT NOT NULL,
+  finished_at TEXT, error TEXT,
+  input_tokens INTEGER NOT NULL DEFAULT 0, output_tokens INTEGER NOT NULL DEFAULT 0,
+  searches INTEGER NOT NULL DEFAULT 0
+);
+CREATE UNIQUE INDEX runs_one_running ON runs(agent_id) WHERE status = 'running';
+CREATE TABLE items (
+  id INTEGER PRIMARY KEY,
+  run_id INTEGER NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+  title TEXT NOT NULL, url TEXT NOT NULL, source TEXT NOT NULL,
+  published TEXT NOT NULL, summary TEXT NOT NULL,
+  seen_before INTEGER NOT NULL DEFAULT 0
+);
+"""
+
+
+def test_init_db_migrates_old_schema(tmp_path, monkeypatch, caplog):
+    from webapp import db
+    path = tmp_path / "old.db"
+    conn = sqlite3.connect(path)
+    conn.executescript(OLD_SCHEMA)
+    conn.execute("INSERT INTO agents (name, query, domain_mode, domains, lookback_days,"
+                 " max_searches, schedule_time, created_at, updated_at)"
+                 " VALUES ('Old', 'q', 'none', '[]', 7, 5, NULL, 't', 't')")
+    conn.execute("INSERT INTO runs (agent_id, trigger_kind, status, started_at, finished_at)"
+                 " VALUES (1, 'manual', 'succeeded', 't', 't')")
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(db, "DB_PATH", path)
+    caplog.set_level("INFO", logger="webapp.db")
+    db.init_db()
+    db.init_db()  # second run is a no-op
+    agent = db.get_agent(1)
+    assert agent.name == "Old" and agent.response_instructions == ""
+    run = db.get_run(1)
+    assert run.status == "succeeded" and run.answer is None and run.provider is None
+    assert caplog.text.count("added column") == 3

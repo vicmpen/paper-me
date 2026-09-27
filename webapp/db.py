@@ -41,7 +41,8 @@ CREATE TABLE IF NOT EXISTS agents (
   max_searches INTEGER NOT NULL,
   schedule_time TEXT,
   created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  updated_at TEXT NOT NULL,
+  response_instructions TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS runs (
   id INTEGER PRIMARY KEY,
@@ -53,7 +54,9 @@ CREATE TABLE IF NOT EXISTS runs (
   error TEXT,
   input_tokens INTEGER NOT NULL DEFAULT 0,
   output_tokens INTEGER NOT NULL DEFAULT 0,
-  searches INTEGER NOT NULL DEFAULT 0
+  searches INTEGER NOT NULL DEFAULT 0,
+  answer TEXT,
+  provider TEXT
 );
 CREATE UNIQUE INDEX IF NOT EXISTS runs_one_running ON runs(agent_id) WHERE status = 'running';
 CREATE TABLE IF NOT EXISTS items (
@@ -65,11 +68,20 @@ CREATE TABLE IF NOT EXISTS items (
 );
 """
 
+# Columns added after the first release. CREATE TABLE IF NOT EXISTS won't add
+# them to an existing data/webapp.db, so init_db adds whichever are missing.
+_NEW_COLUMNS = [
+    ("agents", "response_instructions", "TEXT NOT NULL DEFAULT ''"),
+    ("runs", "answer", "TEXT"),
+    ("runs", "provider", "TEXT"),
+]
+
 _DOMAIN_RE = re.compile(r"^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
 _TIME_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 _SCHEME_RE = re.compile(r"^[a-z][a-z0-9+.-]*://")
 _DOMAIN_MODES = {"none", "include", "exclude"}
 _MAX_DOMAINS = 64
+_MAX_INSTRUCTIONS = 2000
 
 
 @dataclass
@@ -81,6 +93,7 @@ class AgentInput:
     lookback_days: int
     max_searches: int
     schedule_time: str | None   # "HH:MM" or None
+    response_instructions: str = ""   # "" = default briefing
 
 
 @dataclass
@@ -102,6 +115,8 @@ class Run:
     input_tokens: int
     output_tokens: int
     searches: int
+    answer: str | None = None
+    provider: str | None = None
 
 
 @dataclass
@@ -127,11 +142,21 @@ def connect() -> sqlite3.Connection:
     return conn
 
 
+def _add_missing_columns(conn: sqlite3.Connection) -> None:
+    for table, column, decl in _NEW_COLUMNS:
+        existing = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+        if column not in existing:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+            log.info("added column %s.%s", table, column)
+
+
 def init_db() -> None:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with closing(connect()) as conn:
         conn.execute("PRAGMA journal_mode=WAL")
         conn.executescript(_SCHEMA)
+        with conn:
+            _add_missing_columns(conn)
         # Any run still "running" at startup belongs to a previous process
         # whose thread is gone; without this it would spin in the UI forever.
         with conn:
@@ -203,12 +228,18 @@ def validate_agent(form: dict[str, str]) -> tuple[AgentInput | None, dict[str, s
     if schedule_time is not None and not _TIME_RE.match(schedule_time):
         errors["schedule_time"] = "Use 24-hour HH:MM, e.g. 07:30."
 
+    response_instructions = (form.get("response_instructions") or "").strip()
+    if len(response_instructions) > _MAX_INSTRUCTIONS:
+        errors["response_instructions"] = (
+            f"Keep this to {_MAX_INSTRUCTIONS} characters or fewer.")
+
     if errors:
         return None, errors
     return AgentInput(
         name=name, query=query, domain_mode=domain_mode, domains=domains,
         lookback_days=lookback_days, max_searches=max_searches,
         schedule_time=schedule_time,
+        response_instructions=response_instructions,
     ), {}
 
 
@@ -220,6 +251,7 @@ def _row_to_agent(row: sqlite3.Row) -> Agent:
         domain_mode=row["domain_mode"], domains=json.loads(row["domains"]),
         lookback_days=row["lookback_days"], max_searches=row["max_searches"],
         schedule_time=row["schedule_time"],
+        response_instructions=row["response_instructions"],
         created_at=row["created_at"], updated_at=row["updated_at"],
     )
 
@@ -229,10 +261,11 @@ def create_agent(inp: AgentInput) -> int:
     with closing(connect()) as conn, conn:
         cur = conn.execute(
             "INSERT INTO agents (name, query, domain_mode, domains, lookback_days,"
-            " max_searches, schedule_time, created_at, updated_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " max_searches, schedule_time, response_instructions, created_at, updated_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (inp.name, inp.query, inp.domain_mode, json.dumps(inp.domains),
-             inp.lookback_days, inp.max_searches, inp.schedule_time, now, now),
+             inp.lookback_days, inp.max_searches, inp.schedule_time,
+             inp.response_instructions, now, now),
         )
         return cur.lastrowid
 
@@ -253,9 +286,11 @@ def update_agent(agent_id: int, inp: AgentInput) -> None:
     with closing(connect()) as conn, conn:
         conn.execute(
             "UPDATE agents SET name=?, query=?, domain_mode=?, domains=?, lookback_days=?,"
-            " max_searches=?, schedule_time=?, updated_at=? WHERE id=?",
+            " max_searches=?, schedule_time=?, response_instructions=?, updated_at=?"
+            " WHERE id=?",
             (inp.name, inp.query, inp.domain_mode, json.dumps(inp.domains),
-             inp.lookback_days, inp.max_searches, inp.schedule_time, _now(), agent_id),
+             inp.lookback_days, inp.max_searches, inp.schedule_time,
+             inp.response_instructions, _now(), agent_id),
         )
 
 
@@ -328,7 +363,8 @@ def seen_urls(agent_id: int, before_run_id: int) -> set[str]:
 
 def finish_run(run_id: int, *, status: str, error: str | None,
                input_tokens: int, output_tokens: int, searches: int,
-               items: list[FoundItem]) -> None:
+               items: list[FoundItem], answer: str | None = None,
+               provider: str | None = None) -> None:
     with closing(connect()) as conn, conn:
         row = conn.execute("SELECT agent_id FROM runs WHERE id = ?", (run_id,)).fetchone()
         if row is None:
@@ -343,8 +379,9 @@ def finish_run(run_id: int, *, status: str, error: str | None,
         )
         conn.execute(
             "UPDATE runs SET status=?, error=?, finished_at=?, input_tokens=?,"
-            " output_tokens=?, searches=? WHERE id=?",
-            (status, error, _now(), input_tokens, output_tokens, searches, run_id),
+            " output_tokens=?, searches=?, answer=?, provider=? WHERE id=?",
+            (status, error, _now(), input_tokens, output_tokens, searches, answer,
+             provider, run_id),
         )
 
 
