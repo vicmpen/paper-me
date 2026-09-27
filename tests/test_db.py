@@ -252,4 +252,105 @@ def test_init_db_migrates_old_schema(tmp_path, monkeypatch, caplog):
     assert agent.name == "Old" and agent.response_instructions == ""
     run = db.get_run(1)
     assert run.status == "succeeded" and run.answer is None and run.provider is None
-    assert caplog.text.count("added column") == 3
+    assert run.stage is None and run.edition is None
+    assert db.all_edition_lines(1) == []
+    assert caplog.text.count("added column") == 5
+
+
+# --- live paper: stage, edition, edition lines ---
+
+def running_run(db):
+    aid = db.create_agent(make_input())
+    rid, _ = db.create_run(aid, "manual")
+    return aid, rid
+
+
+def finish(db, rid, **over):
+    base = dict(status="succeeded", error=None, input_tokens=5, output_tokens=3,
+                searches=2, items=[])
+    base.update(over)
+    db.finish_run(rid, **base)
+
+
+def test_save_results_then_finish_run_does_not_double_insert(tmp_db):
+    aid, rid = running_run(tmp_db)
+    tmp_db.save_results(rid, items=[found("https://a.com/1")], answer="A [1]",
+                        provider="exa", searches=2)
+    run = tmp_db.get_run(rid)
+    assert run.status == "running" and run.answer == "A [1]"
+    assert run.provider == "exa" and run.searches == 2
+    finish(tmp_db, rid, edition="composed")
+    run = tmp_db.get_run(rid)
+    assert run.answer == "A [1]" and run.provider == "exa" and run.edition == "composed"
+    assert [i.url for i in tmp_db.list_items(rid)] == ["https://a.com/1"]
+
+
+def test_save_results_zero_items_keeps_answer(tmp_db):
+    aid, rid = running_run(tmp_db)
+    tmp_db.save_results(rid, items=[], answer="Nothing relevant.", provider="exa", searches=1)
+    finish(tmp_db, rid, edition="empty")
+    run = tmp_db.get_run(rid)
+    assert run.answer == "Nothing relevant." and run.edition == "empty"
+    assert tmp_db.list_items(rid) == []
+
+
+def test_save_results_marks_seen_before(tmp_db):
+    aid, r1 = running_run(tmp_db)
+    tmp_db.save_results(r1, items=[found("https://a.com/1")], answer="x", provider="exa", searches=1)
+    finish(tmp_db, r1, edition="composed")
+    r2, _ = tmp_db.create_run(aid, "manual")
+    tmp_db.save_results(r2, items=[found("https://a.com/1"), found("https://a.com/2")],
+                        answer="y", provider="exa", searches=1)
+    assert [i.seen_before for i in tmp_db.list_items(r2)] == [True, False]
+
+
+def test_set_stage_only_while_running_and_cleared_by_finish(tmp_db):
+    aid, rid = running_run(tmp_db)
+    tmp_db.set_stage(rid, "searching")
+    assert tmp_db.get_run(rid).stage == "searching"
+    finish(tmp_db, rid, status="failed", error="boom")
+    assert tmp_db.get_run(rid).stage is None
+    tmp_db.set_stage(rid, "writing")
+    assert tmp_db.get_run(rid).stage is None
+
+
+def test_edition_lines_append_only_while_running(tmp_db):
+    aid, rid = running_run(tmp_db)
+    tmp_db.append_edition_lines(rid, ["a", "b"])
+    tmp_db.append_edition_lines(rid, ["c"])
+    tmp_db.append_edition_lines(rid, [])
+    assert tmp_db.edition_lines_after(rid, 1) == [(2, "b"), (3, "c")]
+    finish(tmp_db, rid, edition="composed")
+    tmp_db.append_edition_lines(rid, ["late"])
+    assert tmp_db.all_edition_lines(rid) == ["a", "b", "c"]
+
+
+def test_finish_run_swaps_edition_lines_atomically(tmp_db):
+    aid, rid = running_run(tmp_db)
+    tmp_db.append_edition_lines(rid, ["a", "b", "c", "d"])
+    finish(tmp_db, rid, edition="fallback", edition_lines=["x", "y"])
+    assert tmp_db.edition_lines_after(rid, 0) == [(1, "x"), (2, "y")]
+    run = tmp_db.get_run(rid)
+    assert run.edition == "fallback" and run.status == "succeeded" and run.stage is None
+
+
+def test_finish_run_without_edition_lines_keeps_stored_lines(tmp_db):
+    aid, rid = running_run(tmp_db)
+    tmp_db.append_edition_lines(rid, ["a"])
+    finish(tmp_db, rid, edition="composed")
+    assert tmp_db.all_edition_lines(rid) == ["a"]
+
+
+def test_init_db_sweep_clears_stage(tmp_db):
+    aid, rid = running_run(tmp_db)
+    tmp_db.set_stage(rid, "composing")
+    tmp_db.init_db()
+    run = tmp_db.get_run(rid)
+    assert run.status == "failed" and run.stage is None
+
+
+def test_delete_agent_cascades_edition_lines(tmp_db):
+    aid, rid = running_run(tmp_db)
+    tmp_db.append_edition_lines(rid, ["a"])
+    tmp_db.delete_agent(aid)
+    assert tmp_db.all_edition_lines(rid) == []

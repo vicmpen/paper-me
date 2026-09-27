@@ -8,6 +8,8 @@ be shared across threads. WAL mode lets the UI read while a run writes.
 by a check-then-insert, so a double-clicked "Run now" and a scheduler tick
 racing each other can't both start a run.
 
+edition_lines holds each run's validated json-render patch lines (see webapp/compose.py).
+
 DB_PATH is read at call time so tests can monkeypatch it.
 """
 
@@ -56,7 +58,9 @@ CREATE TABLE IF NOT EXISTS runs (
   output_tokens INTEGER NOT NULL DEFAULT 0,
   searches INTEGER NOT NULL DEFAULT 0,
   answer TEXT,
-  provider TEXT
+  provider TEXT,
+  stage TEXT,
+  edition TEXT
 );
 CREATE UNIQUE INDEX IF NOT EXISTS runs_one_running ON runs(agent_id) WHERE status = 'running';
 CREATE TABLE IF NOT EXISTS items (
@@ -66,6 +70,13 @@ CREATE TABLE IF NOT EXISTS items (
   published TEXT NOT NULL, summary TEXT NOT NULL,
   seen_before INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS edition_lines (
+  id INTEGER PRIMARY KEY,
+  run_id INTEGER NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+  seq INTEGER NOT NULL,
+  line TEXT NOT NULL,
+  UNIQUE (run_id, seq)
+);
 """
 
 # Columns added after the first release. CREATE TABLE IF NOT EXISTS won't add
@@ -74,6 +85,8 @@ _NEW_COLUMNS = [
     ("agents", "response_instructions", "TEXT NOT NULL DEFAULT ''"),
     ("runs", "answer", "TEXT"),
     ("runs", "provider", "TEXT"),
+    ("runs", "stage", "TEXT"),
+    ("runs", "edition", "TEXT"),
 ]
 
 _DOMAIN_RE = re.compile(r"^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
@@ -117,6 +130,8 @@ class Run:
     searches: int
     answer: str | None = None
     provider: str | None = None
+    stage: str | None = None      # planning | searching | writing | composing, while running
+    edition: str | None = None    # composed | fallback | empty; None = failed or pre-paper run
 
 
 @dataclass
@@ -161,7 +176,8 @@ def init_db() -> None:
         # whose thread is gone; without this it would spin in the UI forever.
         with conn:
             cur = conn.execute(
-                "UPDATE runs SET status='failed', error=?, finished_at=? WHERE status='running'",
+                "UPDATE runs SET status='failed', error=?, finished_at=?, stage=NULL"
+                " WHERE status='running'",
                 ("interrupted (server restarted)", _now()),
             )
     log.info("database ready at %s", DB_PATH)
@@ -361,28 +377,93 @@ def seen_urls(agent_id: int, before_run_id: int) -> set[str]:
         return _seen_urls(conn, agent_id, before_run_id)
 
 
+def _insert_items(conn: sqlite3.Connection, run_id: int, agent_id: int,
+                  items: list[FoundItem]) -> None:
+    seen = _seen_urls(conn, agent_id, run_id)
+    conn.executemany(
+        "INSERT INTO items (run_id, title, url, source, published, summary, seen_before)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [(run_id, it.title, it.url, it.source, it.published, it.summary, it.url in seen)
+         for it in items],
+    )
+
+
+def save_results(run_id: int, *, items: list[FoundItem], answer: str | None,
+                 provider: str | None, searches: int) -> None:
+    """Store a run's sources and answer while it is still running, so the
+    paper can resolve citations while compose streams the edition."""
+    with closing(connect()) as conn, conn:
+        row = conn.execute("SELECT agent_id FROM runs WHERE id = ?", (run_id,)).fetchone()
+        if row is None:
+            return
+        _insert_items(conn, run_id, row["agent_id"], items)
+        conn.execute("UPDATE runs SET answer=?, provider=?, searches=? WHERE id=?",
+                     (answer, provider, searches, run_id))
+
+
 def finish_run(run_id: int, *, status: str, error: str | None,
                input_tokens: int, output_tokens: int, searches: int,
                items: list[FoundItem], answer: str | None = None,
-               provider: str | None = None) -> None:
+               provider: str | None = None, edition: str | None = None,
+               edition_lines: list[str] | None = None) -> None:
+    """Record a run's outcome. answer/provider of None keep the values
+    save_results stored. edition_lines, when given, replace the run's lines
+    in the same transaction that finishes the run, so a stream reader never
+    sees a finished run with half-swapped lines."""
     with closing(connect()) as conn, conn:
         row = conn.execute("SELECT agent_id FROM runs WHERE id = ?", (run_id,)).fetchone()
         if row is None:
             # Agent (and its runs) deleted mid-run; nothing left to record.
             return
-        seen = _seen_urls(conn, row["agent_id"], run_id)
-        conn.executemany(
-            "INSERT INTO items (run_id, title, url, source, published, summary, seen_before)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?)",
-            [(run_id, it.title, it.url, it.source, it.published, it.summary, it.url in seen)
-             for it in items],
-        )
+        _insert_items(conn, run_id, row["agent_id"], items)
+        if edition_lines is not None:
+            conn.execute("DELETE FROM edition_lines WHERE run_id = ?", (run_id,))
+            conn.executemany(
+                "INSERT INTO edition_lines (run_id, seq, line) VALUES (?, ?, ?)",
+                [(run_id, seq, line) for seq, line in enumerate(edition_lines, 1)],
+            )
         conn.execute(
             "UPDATE runs SET status=?, error=?, finished_at=?, input_tokens=?,"
-            " output_tokens=?, searches=?, answer=?, provider=? WHERE id=?",
+            " output_tokens=?, searches=?, answer=COALESCE(?, answer),"
+            " provider=COALESCE(?, provider), edition=?, stage=NULL WHERE id=?",
             (status, error, _now(), input_tokens, output_tokens, searches, answer,
-             provider, run_id),
+             provider, edition, run_id),
         )
+
+
+def set_stage(run_id: int, stage: str | None) -> None:
+    with closing(connect()) as conn, conn:
+        conn.execute("UPDATE runs SET stage=? WHERE id=? AND status='running'", (stage, run_id))
+
+
+def append_edition_lines(run_id: int, lines: list[str]) -> None:
+    """Append validated edition lines. Lines only append while the run is
+    running; afterwards only finish_run may change them."""
+    if not lines:
+        return
+    with closing(connect()) as conn, conn:
+        row = conn.execute("SELECT status FROM runs WHERE id = ?", (run_id,)).fetchone()
+        if row is None or row["status"] != "running":
+            return
+        last = conn.execute("SELECT COALESCE(MAX(seq), 0) FROM edition_lines WHERE run_id = ?",
+                            (run_id,)).fetchone()[0]
+        conn.executemany(
+            "INSERT INTO edition_lines (run_id, seq, line) VALUES (?, ?, ?)",
+            [(run_id, last + i, line) for i, line in enumerate(lines, 1)],
+        )
+
+
+def edition_lines_after(run_id: int, seq: int) -> list[tuple[int, str]]:
+    with closing(connect()) as conn:
+        rows = conn.execute(
+            "SELECT seq, line FROM edition_lines WHERE run_id = ? AND seq > ? ORDER BY seq",
+            (run_id, seq),
+        ).fetchall()
+    return [(r["seq"], r["line"]) for r in rows]
+
+
+def all_edition_lines(run_id: int) -> list[str]:
+    return [line for _, line in edition_lines_after(run_id, 0)]
 
 
 def list_items(run_id: int) -> list[Item]:
