@@ -16,7 +16,8 @@ def make_agent(db, **over):
 
 def result(*urls):
     items = [search_agent.FoundItem(title="t", url=u, source="s", published="", summary="x") for u in urls]
-    return search_agent.SearchResult(items=items, input_tokens=5, output_tokens=3, searches=2)
+    return search_agent.SearchResult(answer="an answer", items=items, input_tokens=5,
+                                     output_tokens=3, searches=2, provider="exa")
 
 
 def test_execute_run_success(tmp_db, monkeypatch):
