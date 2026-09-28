@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
 import { createSpecStreamCompiler, type Spec } from "@json-render/core";
 import { EditionView } from "../catalog/EditionView";
+import { BackIssues } from "../paper/BackIssues";
+import { ControlTable } from "../paper/ControlTable";
+import { EmptyEdition } from "../paper/EmptyEdition";
+import { Masthead } from "../paper/Masthead";
 import { StaticSources } from "../paper/sources";
 import { Legend } from "../ui/Legend";
 import { FIXTURES, toSpec, type Fixture } from "./fixtures";
@@ -46,6 +50,19 @@ export function Styleguide() {
       <section className={styles.section} aria-labelledby="replay">
         <h2 id="replay">Going to press (replay)</h2>
         <StreamReplay fixture={FIXTURES[0]} />
+      </section>
+      <section className={styles.section} aria-labelledby="page-parts">
+        <h2 id="page-parts">Page parts</h2>
+        {/* Going to press, mid-run: the legs that a real run would otherwise have to pay for. */}
+        <Masthead paper={{ agent: { id: 3, name: "Oil desk", query: "oil prices" }, current_run_id: 13, editions: [] }}
+          edition={null} number={4} stage="writing" live running onPress={() => {}} pressError={null} />
+        <StaticSources sources={FIXTURES[0].sources}><ControlTable spec={toSpec(FIXTURES[0].lines)} /></StaticSources>
+        <BackIssues agentId={3} runId={12} editions={[
+          { run_id: 12, started_at: "2026-09-27T07:00:00Z", finished_at: "2026-09-27T07:01:00Z", status: "succeeded", edition: "composed", error: null, answer: null },
+          { run_id: 11, started_at: "2026-09-26T07:00:00Z", finished_at: "2026-09-26T07:00:30Z", status: "failed", edition: null, error: "search provider failed", answer: null },
+          { run_id: 10, started_at: "2026-09-25T07:00:00Z", finished_at: "2026-09-25T07:01:00Z", status: "succeeded", edition: "fallback", error: null, answer: null },
+        ]} />
+        <EmptyEdition answer="No results found in this window." />
       </section>
       {FIXTURES.map((fixture) => (
         <section key={fixture.id} className={styles.section} aria-labelledby={`fixture-${fixture.id}`}>

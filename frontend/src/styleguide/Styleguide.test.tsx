@@ -1,4 +1,5 @@
 import { act, render, screen, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FIXTURES } from "./fixtures";
 import { Styleguide } from "./Styleguide";
@@ -14,7 +15,7 @@ describe("stream replay", () => {
     vi.useFakeTimers();
     vi.stubGlobal("matchMedia", () => ({ matches: false }));
     vi.spyOn(console, "warn").mockImplementation(() => {}); // json-render: children not arrived yet
-    render(<Styleguide />);
+    render(<MemoryRouter><Styleguide /></MemoryRouter>); // the app mounts it inside BrowserRouter
     const replay = within(screen.getByRole("region", { name: "Going to press (replay)" }));
     const lines = FIXTURES[0].lines.length;
     const tick = (n: number) => act(() => vi.advanceTimersByTime(700 * n));
