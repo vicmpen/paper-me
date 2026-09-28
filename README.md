@@ -89,6 +89,23 @@ python -m webapp          # http://127.0.0.1:8000
 pytest                    # tests, no network
 ```
 
+Each agent has its own paper at `http://127.0.0.1:8000/paper/<agent id>`
+(linked from the agent page as "Read the paper"). After a run's answer is
+written, a compose stage asks Claude to lay out the edition from a fixed
+component catalog; the edition streams onto the page block by block. The
+main story is only labelled when one event is reported by more independent
+outlets than any other. If compose fails, a rules-based edition is used
+instead. The paper is a React app in `frontend/`:
+
+```
+cd frontend
+npm install
+npm run build            # the Python server serves frontend/dist at /paper
+npm run dev              # or: live-reload dev server on :5173 (run python -m webapp too)
+npm test                 # component and stream tests
+npm run export-catalog   # after changing src/catalog/catalog.ts
+```
+
 Notes:
 
 - Needs `ANTHROPIC_API_KEY` plus the key for the chosen provider:
@@ -97,7 +114,7 @@ Notes:
 - To switch provider, change `WEBAPP_SEARCH_PROVIDER` and restart. To add
   one, write a module in `webapp/search_providers/` and add an entry to
   `_PROVIDERS` there.
-- A run costs two small Claude calls (a live run measured ~13.5K input /
+- A run costs three Claude calls (plan, write, compose) (a live run measured ~13.5K input /
   ~0.5K output tokens with `claude-sonnet-5`) plus the provider's
   per-search charge (Exa reported ~$0.007 per query).
 - Scheduled runs only fire while the server is running; missed runs are
