@@ -126,6 +126,9 @@ def test_spa_serves_index_for_client_routes(client, tmp_path, monkeypatch):
     monkeypatch.setattr(app_module, "_DIST", tmp_path)
     # StaticFiles resolves its directory at startup; point it at the test build.
     monkeypatch.setattr(app_module._paper_assets, "all_directories", [tmp_path / "assets"])
+    # Its first request also checks the real directory, which a clean checkout lacks.
+    monkeypatch.setattr(app_module._paper_assets, "directory", tmp_path / "assets")
+    monkeypatch.setattr(app_module._paper_assets, "config_checked", False)
     for path in ("/paper/3", "/paper/3/10", "/paper/styleguide"):
         r = client.get(path)
         assert r.status_code == 200 and "id=root" in r.text
