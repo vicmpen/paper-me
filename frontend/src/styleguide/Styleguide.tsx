@@ -19,7 +19,7 @@ function StreamReplay({ fixture }: { fixture: Fixture }) {
     const timer = window.setInterval(() => {
       if (i === fixture.lines.length + 4) {
         compiler.reset();
-        i = 0;
+        i = -1; // the increment below brings it to 0, so the next tick pushes the first line again
       } else if (i < fixture.lines.length) {
         compiler.push(fixture.lines[i] + "\n");
       }
