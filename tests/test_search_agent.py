@@ -367,3 +367,19 @@ def test_logs_plan_and_done(caplog):
     run(c, FakeSearch(default=[hit("https://a.com/1")]))
     assert "planned 1 queries" in caplog.text and "'q1'" in caplog.text
     assert "search done:" in caplog.text and "sources=1" in caplog.text
+
+
+def test_on_stage_reports_each_step():
+    stages = []
+    client = FakeClient([plan("q1"), write(sources=[1])])
+    run_search(agent(), client=client, search=FakeSearch(default=[hit("https://a.com/1")]),
+               today=TODAY, on_stage=stages.append)
+    assert stages == ["planning", "searching", "writing"]
+
+
+def test_on_stage_stops_before_writing_without_hits():
+    stages = []
+    client = FakeClient([plan("q1")])
+    run_search(agent(), client=client, search=FakeSearch(default=[]), today=TODAY,
+               on_stage=stages.append)
+    assert stages == ["planning", "searching"]

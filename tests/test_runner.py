@@ -6,6 +6,19 @@ import pytest
 import config
 from webapp import runner, scheduler, search_agent
 from webapp.db import AgentInput
+from webapp import compose
+
+
+@pytest.fixture(autouse=True)
+def fake_compose(monkeypatch):
+    calls = []
+
+    def fake(run_id, agent, answer, items, **kw):
+        calls.append((run_id, answer, [i.url for i in items]))
+        return compose.ComposeResult("composed", None, 7, 4)
+
+    monkeypatch.setattr(compose, "compose_edition", fake)
+    return calls
 
 
 def make_agent(db, **over):
@@ -31,7 +44,8 @@ def test_execute_run_success(tmp_db, monkeypatch):
     monkeypatch.setattr(search_agent, "run_search", fake)
     runner.execute_run(rid)
     run = tmp_db.get_run(rid)
-    assert run.status == "succeeded" and (run.input_tokens, run.searches) == (5, 2)
+    assert run.status == "succeeded" and run.edition == "composed"
+    assert (run.input_tokens, run.output_tokens, run.searches) == (12, 7, 2)
     assert seen["agent"].id == aid
     assert [i.url for i in tmp_db.list_items(rid)] == ["https://a.com/1"]
 
@@ -45,6 +59,7 @@ def test_execute_run_failure_sanitized(tmp_db, monkeypatch):
     runner.execute_run(rid)
     run = tmp_db.get_run(rid)
     assert run.status == "failed"
+    assert run.edition is None
     assert "RuntimeError" in run.error and "sk-abc123" not in run.error and "me@x.com" not in run.error
 
 
@@ -159,3 +174,69 @@ def test_execute_run_failure_records_provider(tmp_db, monkeypatch):
     runner.execute_run(rid)
     run = tmp_db.get_run(rid)
     assert run.status == "failed" and run.provider == "blopus" and run.answer is None
+
+
+def test_stages_are_recorded_in_order(tmp_db, monkeypatch):
+    aid = make_agent(tmp_db)
+    rid, _ = tmp_db.create_run(aid, "manual")
+    stages = []
+    real_set_stage = tmp_db.set_stage
+    monkeypatch.setattr(tmp_db, "set_stage",
+                        lambda run_id, stage: (stages.append(stage), real_set_stage(run_id, stage)))
+
+    def fake(agent, *, on_stage, **kw):
+        for stage in ("planning", "searching", "writing"):
+            on_stage(stage)
+        return result("https://a.com/1")
+
+    monkeypatch.setattr(search_agent, "run_search", fake)
+    runner.execute_run(rid)
+    assert stages == ["planning", "searching", "writing", "composing"]
+    assert tmp_db.get_run(rid).stage is None
+
+
+def test_results_are_saved_before_compose(tmp_db, monkeypatch):
+    aid = make_agent(tmp_db)
+    rid, _ = tmp_db.create_run(aid, "manual")
+    seen = {}
+
+    def check_compose(run_id, agent, answer, items, **kw):
+        run = tmp_db.get_run(run_id)
+        seen["state"] = (run.status, run.answer, [i.url for i in tmp_db.list_items(run_id)])
+        return compose.ComposeResult("composed", None, 0, 0)
+
+    monkeypatch.setattr(search_agent, "run_search", lambda agent, **kw: result("https://a.com/1"))
+    monkeypatch.setattr(compose, "compose_edition", check_compose)
+    runner.execute_run(rid)
+    assert seen["state"] == ("running", "an answer", ["https://a.com/1"])
+    assert [i.url for i in tmp_db.list_items(rid)] == ["https://a.com/1"]  # not inserted twice
+
+
+def test_fallback_lines_are_swapped_in(tmp_db, monkeypatch):
+    aid = make_agent(tmp_db)
+    rid, _ = tmp_db.create_run(aid, "manual")
+
+    def falls_back(run_id, agent, answer, items, **kw):
+        tmp_db.append_edition_lines(run_id, ["composed-1", "composed-2"])
+        return compose.ComposeResult("fallback", ["fb-1", "fb-2", "fb-3"], 2, 1)
+
+    monkeypatch.setattr(search_agent, "run_search", lambda agent, **kw: result("https://a.com/1"))
+    monkeypatch.setattr(compose, "compose_edition", falls_back)
+    runner.execute_run(rid)
+    run = tmp_db.get_run(rid)
+    assert run.status == "succeeded" and run.edition == "fallback"
+    assert tmp_db.all_edition_lines(rid) == ["fb-1", "fb-2", "fb-3"]
+    assert (run.input_tokens, run.output_tokens) == (7, 4)
+
+
+def test_zero_items_is_an_empty_edition(tmp_db, monkeypatch, fake_compose):
+    aid = make_agent(tmp_db)
+    rid, _ = tmp_db.create_run(aid, "manual")
+    empty = search_agent.SearchResult(answer="Nothing relevant.", items=[], input_tokens=5,
+                                      output_tokens=3, searches=1, provider="exa")
+    monkeypatch.setattr(search_agent, "run_search", lambda agent, **kw: empty)
+    runner.execute_run(rid)
+    run = tmp_db.get_run(rid)
+    assert run.status == "succeeded" and run.edition == "empty"
+    assert run.answer == "Nothing relevant." and run.provider == "exa"
+    assert fake_compose == []

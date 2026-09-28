@@ -327,7 +327,9 @@ def _build_items(data: dict, hits: list[SearchHit]) -> list[FoundItem]:
 
 def run_search(agent: Agent, *, client: anthropic.Anthropic | None = None,
                search: Callable[[SearchRequest], list[SearchHit]] | None = None,
-               today: str | None = None) -> SearchResult:
+               today: str | None = None,
+               on_stage: Callable[[str], None] | None = None) -> SearchResult:
+    stage = on_stage or (lambda _stage: None)
     budget = _Budget()
     provider = config.WEBAPP_SEARCH_PROVIDER
     if search is None:
@@ -350,6 +352,7 @@ def run_search(agent: Agent, *, client: anthropic.Anthropic | None = None,
              provider, config.WEBAPP_MODEL, _domain_line(agent), agent.lookback_days,
              agent.max_searches, agent.query)
 
+    stage("planning")
     plan = _call_claude(
         client, budget, stage="plan", system=PLAN_PROMPT, schema=PLAN_SCHEMA,
         user=(f"{window}\nDomain filter: {_domain_line(agent)} (applied by the search service).\n"
@@ -359,6 +362,7 @@ def run_search(agent: Agent, *, client: anthropic.Anthropic | None = None,
     queries = _plan_queries(plan, agent)
     log.info("planned %d queries: %s", len(queries), queries)
 
+    stage("searching")
     per_query_hits, searches = _run_queries(search, queries, agent, since, budget)
     hits = _merge(per_query_hits, since)
     if not hits:
@@ -368,6 +372,7 @@ def run_search(agent: Agent, *, client: anthropic.Anthropic | None = None,
                             output_tokens=budget.output_tokens, searches=searches,
                             provider=provider)
 
+    stage("writing")
     written = _call_claude(
         client, budget, stage="write", system=WRITE_PROMPT, schema=_write_schema(len(hits)),
         user=(f"{window}\n\nTopic:\n{agent.query}\n\nHow the response should look:\n"
