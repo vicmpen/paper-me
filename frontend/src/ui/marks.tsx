@@ -9,7 +9,7 @@ export function StartTriangle() {
   );
 }
 
-/** The course finish: a double circle, where "what it means" sits. */
+/** The course finish: a double circle, after the last control. */
 export function FinishCircle() {
   return (
     <svg className={styles.mark} viewBox="0 0 40 40" aria-hidden="true">

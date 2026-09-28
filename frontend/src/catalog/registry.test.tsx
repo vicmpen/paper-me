@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { controlRows } from "../paper/describe";
 import { StaticSources } from "../paper/sources";
 import { FIXTURES, OIL_SOURCES, toSpec } from "../styleguide/fixtures";
 import { EditionView } from "./EditionView";
@@ -41,6 +42,32 @@ describe("catalog components", () => {
     const { container } = renderFixture("no-lead");
     const numbers = [...container.querySelectorAll("svg text")].map((t) => t.textContent);
     expect(numbers).toEqual(["1", "2", "3"]);
+  });
+
+  it("numbers every block and rings it by its outlets, as the control table counts them", () => {
+    const f = fixture("full");
+    const { container } = renderFixture("full");
+    const controls = [...container.querySelectorAll("svg")].filter((svg) => svg.querySelector("text"));
+    const rows = controlRows(toSpec(f.lines), f.sources);
+    expect(controls.map((svg) => svg.querySelector("text")!.textContent)).toEqual(rows.map((r) => String(r.number)));
+    expect(controls.map((svg) => svg.querySelectorAll("[data-ring]").length)).toEqual(rows.map((r) => r.outlets));
+  });
+
+  it("finishes the course after the last control, with or without Analysis", () => {
+    for (const id of ["full", "no-lead"]) {
+      const { container, unmount } = renderFixture(id);
+      const finish = container.querySelector("article > ol")!.nextElementSibling!;
+      expect(finish).toBe(container.querySelector("article")!.lastElementChild);
+      expect(finish.querySelectorAll("circle")).toHaveLength(2);
+      unmount();
+    }
+  });
+
+  it("marks updates on the course and names the main story in its coverage line", () => {
+    renderFixture("full");
+    const marker = screen.getByRole("heading", { name: /Diesel export-ban/ }).previousElementSibling;
+    expect(marker).toHaveTextContent("Update");
+    expect(screen.getByText(/Reported by 3 outlets/).parentElement).toContainElement(screen.getByText("Main story"));
   });
 
   it("renders a page whose children haven't all arrived", () => {

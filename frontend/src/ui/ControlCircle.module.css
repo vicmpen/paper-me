@@ -1,11 +1,9 @@
 .control { display: block; overflow: visible; flex: none; }
 .lead { width: 7rem; }
 .story { width: 4.25rem; }
-.small { width: 2.6rem; }
 .ring { fill: none; stroke: var(--contour); stroke-width: 1.3; }
 .story .ring { stroke-width: 1.8; } /* keeps rings near 1px at story size so they stay countable */
 .face { fill: var(--ground); stroke: var(--course); stroke-width: 4; }
 .number { fill: var(--course); font: 700 24px var(--font-display); }
-.small .number { font-size: 30px; }
 .control[data-live] .face { transform-box: fill-box; transform-origin: center; animation: punch var(--dur-leg) var(--ease-course) both; }
 @keyframes punch { from { transform: scale(0.55); opacity: 0; } to { transform: none; opacity: 1; } }

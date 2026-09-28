@@ -1,6 +1,7 @@
-import { createContext, useContext } from "react";
+import { createContext, useContext, type ReactNode } from "react";
 import { outlet, outletsOf } from "../../lib/outlets";
 import { useSources } from "../../paper/sources";
+import { ControlCircle } from "../../ui/ControlCircle";
 import styles from "./catalog.module.css";
 
 /** Control number of the block being rendered (1-based reading order), set by Page. */
@@ -15,6 +16,31 @@ export function useCoverage(cites: number[]): { outlets: number; update: boolean
 
 export function outletsLabel(n: number): string {
   return `Reported by ${n} ${n === 1 ? "outlet" : "outlets"}`;
+}
+
+/**
+ * The control on the rail: rings counted from the block's cites, like the
+ * control table, and "Update" marked on the course under it in thicket ink.
+ */
+export function Marker({ cites, size = "story" }: { cites: number[]; size?: "lead" | "story" }) {
+  const { outlets, update } = useCoverage(cites);
+  return (
+    <div className={styles.marker}>
+      <ControlCircle number={useControlNumber()} rings={outlets} size={size} live />
+      {update && <span className={styles.update}>Update</span>}
+    </div>
+  );
+}
+
+/** The line under a control's text: what it is, who reported it, and its sources. */
+export function Coverage({ cites, children }: { cites: number[]; children?: ReactNode }) {
+  const { outlets } = useCoverage(cites);
+  return (
+    <p className={styles.coverage}>
+      {children}
+      {outlets > 0 && <span className={styles.part}>{outletsLabel(outlets)}</span>} <Cites cites={cites} />
+    </p>
+  );
 }
 
 /** Source numbers as links to the original articles (one click to the source). */
@@ -33,8 +59,4 @@ export function Cites({ cites }: { cites: number[] }) {
       })}
     </span>
   );
-}
-
-export function UpdateTag() {
-  return <span className={styles.update}>Update</span>;
 }

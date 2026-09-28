@@ -1,10 +1,11 @@
 import { Children } from "react";
 import type { ComponentFn } from "@json-render/react";
 import type { catalog } from "../catalog";
-import { StartTriangle } from "../../ui/marks";
+import { FinishCircle, StartTriangle } from "../../ui/marks";
 import { Cites, ControlNumber } from "./shared";
 import styles from "./catalog.module.css";
 
+// The rail runs from the start triangle, through every control, to the finish after the last leg.
 export const Page: ComponentFn<typeof catalog, "Page"> = ({ props, children }) => (
   <article className={styles.page}>
     {props.bottomLine && (
@@ -23,5 +24,6 @@ export const Page: ComponentFn<typeof catalog, "Page"> = ({ props, children }) =
         </ControlNumber.Provider>
       ))}
     </ol>
+    <div className={styles.finish}><FinishCircle /></div>
   </article>
 );

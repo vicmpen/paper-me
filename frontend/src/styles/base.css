@@ -14,7 +14,7 @@ p, ol, ul, dl { margin: 0; }
 a { color: var(--course); text-decoration-thickness: 1px; text-underline-offset: 0.18em; }
 a:hover { text-decoration-thickness: 2px; }
 :focus-visible { outline: 3px solid var(--course); outline-offset: 2px; }
-::selection { background: var(--rule); color: var(--ink); }
+::selection { background: color-mix(in srgb, var(--course) 24%, var(--ground)); color: var(--ink); }
 button { font: inherit; }
 .visually-hidden {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;

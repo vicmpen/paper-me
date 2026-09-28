@@ -8,7 +8,7 @@ export const MAX_RINGS = 8;
  * surrounding text states the number and the outlet count.
  */
 export function ControlCircle({ number, rings, size = "story", live = false }: {
-  number: number; rings: number; size?: "lead" | "story" | "small"; live?: boolean;
+  number: number; rings: number; size?: "lead" | "story"; live?: boolean;
 }) {
   const shown = Math.max(0, Math.min(rings, MAX_RINGS));
   return (
