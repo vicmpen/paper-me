@@ -1,13 +1,6 @@
 name: Daily AI/ML digest
 
 on:
-  schedule:
-    # 15:17 UTC daily. Lands ~8:17am PDT (about 8 months/year) and
-    # ~7:17am PST in winter. The non-round minute avoids GitHub Actions
-    # queue contention at the top of the hour, which can delay or skip
-    # scheduled runs entirely. Cron is always UTC; we accept the
-    # seasonal hour shift.
-    - cron: "17 16 * * *"
   workflow_dispatch: {}
 
 permissions:
